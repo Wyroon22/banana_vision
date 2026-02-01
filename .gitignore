@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtual env
+venv/
+.venv/
+
+# VS Code
+.vscode/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Ultralytics / YOLO outputs
+runs/
+**/runs/
+
+# Datasets (กันไฟล์ใหญ่)
+datasets/
+**/datasets/
+train/
+valid/
+test/
+
+# Weights (ไฟล์ใหญ่)
+*.pt
+*.onnx
+
+# Uploads / temp results (แล้วแต่นายจะเก็บไหม)
+uploads/
+results/
+
+#พวก Test ต่างๆ
+backend/runs_api/
+backend/test_images/
+
