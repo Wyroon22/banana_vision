@@ -41,3 +41,10 @@ results/
 backend/runs_api/
 backend/test_images/
 
+__pycache__/
+*.py
+.venv/
+uploads/
+results/
+.env
+
