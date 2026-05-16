@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 
-const API_BASE = "http://192.168.1.37:8000";
+const API_BASE = "http://172.20.10.2:8000";
 const TARGET_WIDTH = 1280; // ✅ resize กันไฟล์ใหญ่เกิน
 
 export default function HomeScreen() {
@@ -19,13 +19,36 @@ export default function HomeScreen() {
     if (!result?.ok) return null;
 
     const dets = Array.isArray(result.detections) ? result.detections : [];
-    const maxConf =
-      dets.length > 0 ? Math.max(...dets.map((d: any) => Number(d.conf ?? 0))) : 0;
+
+    const maxDetConf =
+      dets.length > 0
+        ? Math.max(...dets.map((d: any) => Number(d.det_conf ?? d.conf ?? 0)))
+        : 0;
+
+    const maxRipenessConf =
+      dets.length > 0
+        ? Math.max(...dets.map((d: any) => Number(d.ripeness_conf ?? 0)))
+        : 0;
+
+    const green = Number(result.summary?.green ?? 0);
+    const breaker = Number(result.summary?.breaker ?? 0);
+    const ripe = Number(result.summary?.ripe ?? 0);
+
+    let overall = "ยังสรุปไม่ได้";
+    if (green >= breaker && green >= ripe) overall = "ดิบเป็นส่วนใหญ่";
+    if (breaker >= green && breaker >= ripe) overall = "ห่ามเป็นส่วนใหญ่";
+    if (ripe >= green && ripe >= breaker) overall = "สุกเป็นส่วนใหญ่";
 
     return {
-      total: dets.length,
+      total: result.count ?? result.total_detections ?? dets.length,
       ms: result.inference_ms ?? 0,
-      maxConf,
+      green,
+      breaker,
+      ripe,
+      overall,
+      maxDetConf,
+      maxRipenessConf,
+      detections: dets,
     };
   }, [result]);
 
@@ -132,9 +155,9 @@ export default function HomeScreen() {
         setAnnotatedUrl(`${API_BASE}${json.result_url}?t=${Date.now()}`);
       }
 
-      const total = json?.detections?.length ?? 0;
+      const total = json?.count ?? json?.total_detections ?? json?.detections?.length ?? 0;
       const ms = json?.inference_ms ?? 0;
-      setStatusText(`✅ ตรวจจับสำเร็จ • พบ ${total} วัตถุ • ${ms} ms`);
+      setStatusText(`✅ ตรวจจับสำเร็จ • พบ ${total} ลูก • ${ms} ms`);
     } catch (err: any) {
       setErrorMsg(String(err?.message || err));
       setStatusText("❌ ตรวจจับไม่สำเร็จ");
@@ -147,8 +170,9 @@ export default function HomeScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: "#fff" }}>
       <View style={{ padding: 16, gap: 12 }}>
         <Text style={{ fontSize: 28, fontWeight: "800" }}>🍌 BananaVision</Text>
+
         <Text style={{ color: "#666" }}>
-          ถ่ายรูป/เลือกรูป → Detect → ดูผลลัพธ์ที่ตีกรอบ
+          ถ่ายรูป/เลือกรูป → Detect → ดูผลความสุกของกล้วยรายลูก
         </Text>
 
         <View style={{ gap: 10 }}>
@@ -163,13 +187,25 @@ export default function HomeScreen() {
         </View>
 
         {!!statusText && (
-          <View style={{ padding: 12, borderRadius: 12, backgroundColor: "#F3F3F3" }}>
+          <View
+            style={{
+              padding: 12,
+              borderRadius: 12,
+              backgroundColor: "#F3F3F3",
+            }}
+          >
             <Text style={{ fontWeight: "600" }}>{statusText}</Text>
           </View>
         )}
 
         {!!errorMsg && (
-          <View style={{ padding: 12, borderRadius: 12, backgroundColor: "#FFF0F0" }}>
+          <View
+            style={{
+              padding: 12,
+              borderRadius: 12,
+              backgroundColor: "#FFF0F0",
+            }}
+          >
             <Text style={{ color: "#B00020", fontWeight: "700" }}>
               เกิดข้อผิดพลาด
             </Text>
@@ -179,10 +215,15 @@ export default function HomeScreen() {
 
         {image && (
           <>
-            <Text style={{ fontWeight: "700" }}>รูปต้นฉบับ</Text>
+            <Text style={{ fontWeight: "700", fontSize: 16 }}>รูปต้นฉบับ</Text>
             <Image
               source={{ uri: image }}
-              style={{ width: "100%", height: 280, borderRadius: 12 }}
+              style={{
+                width: "100%",
+                height: 280,
+                borderRadius: 12,
+                backgroundColor: "#F3F3F3",
+              }}
               resizeMode="contain"
             />
           </>
@@ -190,32 +231,112 @@ export default function HomeScreen() {
 
         {annotatedUrl && (
           <>
-            <Text style={{ fontWeight: "700" }}>ผลลัพธ์ (ตีกรอบแล้ว)</Text>
+            <Text style={{ fontWeight: "700", fontSize: 16 }}>
+              ผลลัพธ์รายลูก
+            </Text>
             <Image
               source={{ uri: annotatedUrl }}
-              style={{ width: "100%", height: 320, borderRadius: 12 }}
+              style={{
+                width: "100%",
+                height: 340,
+                borderRadius: 12,
+                backgroundColor: "#F3F3F3",
+              }}
               resizeMode="contain"
             />
           </>
         )}
 
         {summary && (
-          <View style={{ padding: 12, borderRadius: 12, backgroundColor: "#F6F6F6" }}>
-            <Text style={{ fontWeight: "800", marginBottom: 8 }}>สรุปผล</Text>
-            <Text>• ตรวจเจอ: {summary.total}</Text>
+          <View
+            style={{
+              padding: 14,
+              borderRadius: 14,
+              backgroundColor: "#F6F6F6",
+              gap: 6,
+            }}
+          >
+            <Text style={{ fontWeight: "800", fontSize: 18, marginBottom: 4 }}>
+              📊 สรุปผล
+            </Text>
+
+            <Text>• ตรวจเจอ: {summary.total} ลูก</Text>
+            <Text>• ดิบ: {summary.green} ลูก</Text>
+            <Text>• ห่าม: {summary.breaker} ลูก</Text>
+            <Text>• สุก: {summary.ripe} ลูก</Text>
+            <Text>• ระดับโดยรวม: {summary.overall}</Text>
             <Text>• เวลา inference: {summary.ms} ms</Text>
-            <Text>• ความมั่นใจสูงสุด: {summary.maxConf.toFixed(2)}</Text>
+            <Text>
+              • ความมั่นใจตรวจจับสูงสุด: {summary.maxDetConf.toFixed(2)}
+            </Text>
+            <Text>
+              • ความมั่นใจความสุกสูงสุด: {summary.maxRipenessConf.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        {summary && summary.detections.length > 0 && (
+          <View
+            style={{
+              padding: 14,
+              borderRadius: 14,
+              backgroundColor: "#FFFFFF",
+              borderWidth: 1,
+              borderColor: "#E5E5E5",
+              gap: 6,
+            }}
+          >
+            <Text style={{ fontWeight: "800", fontSize: 18, marginBottom: 4 }}>
+              🍌 รายละเอียดรายลูก
+            </Text>
+
+            {summary.detections.map((d: any) => (
+              <View
+                key={d.index}
+                style={{
+                  paddingVertical: 6,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "#EEEEEE",
+                }}
+              >
+                <Text style={{ fontWeight: "700" }}>ลูกที่ {d.index}</Text>
+                <Text>
+                  ระดับ: {d.ripeness_th ?? d.ripeness ?? "-"} (
+                  {d.ripeness ?? "-"})
+                </Text>
+                <Text>
+                  ความมั่นใจความสุก:{" "}
+                  {Number(d.ripeness_conf ?? 0).toFixed(2)}
+                </Text>
+                <Text>
+                  ความมั่นใจตรวจจับ:{" "}
+                  {Number(d.det_conf ?? d.conf ?? 0).toFixed(2)}
+                </Text>
+              </View>
+            ))}
           </View>
         )}
 
         <Pressable onPress={() => setShowDebug((v) => !v)}>
-          <Text style={{ textDecorationLine: "underline" }}>
+          <Text
+            style={{
+              textDecorationLine: "underline",
+              color: "#0066CC",
+              fontWeight: "700",
+            }}
+          >
             {showDebug ? "ซ่อนรายละเอียด (Debug)" : "ดูรายละเอียด (Debug)"}
           </Text>
         </Pressable>
 
         {showDebug && result && (
-          <View style={{ padding: 12, borderRadius: 12, backgroundColor: "#111" }}>
+          <View
+            style={{
+              padding: 12,
+              borderRadius: 12,
+              backgroundColor: "#111",
+            }}
+          >
             <Text style={{ color: "#fff", fontFamily: "monospace" }}>
               {JSON.stringify(result, null, 2)}
             </Text>
