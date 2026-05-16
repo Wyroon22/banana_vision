@@ -1,15 +1,19 @@
-# Python
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 *.egg-info/
+
+# Python build
 dist/
 build/
 
 # Virtual env
 venv/
 .venv/
+backend/venv/
+backend/.venv/
 
 # VS Code
 .vscode/
@@ -18,34 +22,47 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Environment files
+.env
+backend/.env
+mobile/.env
+
 # Ultralytics / YOLO outputs
 runs/
 **/runs/
+backend/runs/
+backend/runs_api/
 
-# Datasets (กันไฟล์ใหญ่)
+# Datasets / large image folders
 datasets/
 **/datasets/
+backend/datasets/
+backend/test_images/
+backend/test_ripeness_real/
 train/
 valid/
 test/
 
-# Weights (ไฟล์ใหญ่)
+# Model weights
 *.pt
 *.onnx
+backend/models/*.pt
+backend/models/*.onnx
 
-# Uploads / temp results (แล้วแต่นายจะเก็บไหม)
+# Uploads / temp results
 uploads/
 results/
+backend/uploads/
+backend/results/
 
-#พวก Test ต่างๆ
-backend/runs_api/
-backend/test_images/
-backend/test_ripeness_real/
+# Mobile / Expo
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
 
-__pycache__/
-*.py
-.venv/
-uploads/
-results/
-.env
-
+# Logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
