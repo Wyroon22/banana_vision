@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -38,11 +38,83 @@ BOX_COLORS = {
 }
 
 
+# ✅ ปรับตรงนี้ได้ ถ้าแบ่งแถว/หวีผิด
+# ค่าน้อยลง = แยกหวีง่ายขึ้น
+# ค่ามากขึ้น = รวมเป็นหวีเดียวมากขึ้น
+ROW_GAP_RATIO = 0.12
+MIN_ROW_GAP_PX = 80
+
+
+def sort_detections_by_bunch_rows(
+    detections: List[Dict[str, Any]],
+    image_height: int,
+) -> List[Dict[str, Any]]:
+    """
+    เรียงผลลัพธ์แบบ:
+    1. แบ่งเป็นกลุ่ม/แถวตามตำแหน่ง Y
+    2. กลุ่มบนมาก่อน
+    3. ในแต่ละกลุ่ม เรียงซ้ายไปขวา
+    """
+
+    if not detections:
+        return detections
+
+    # เรียงจากบนลงล่างก่อน เพื่อหา gap ระหว่างหวี
+    dets = sorted(detections, key=lambda d: d["_center_y"])
+
+    box_heights = [
+        d["_box_h"]
+        for d in dets
+        if "_box_h" in d and d["_box_h"] > 0
+    ]
+
+    median_box_h = float(np.median(box_heights)) if box_heights else 0
+
+    # ระยะห่าง Y ที่ใช้ตัดว่าเป็นคนละหวี/คนละแถว
+    row_gap = max(
+        MIN_ROW_GAP_PX,
+        image_height * ROW_GAP_RATIO,
+        median_box_h * 0.45,
+    )
+
+    rows: List[List[Dict[str, Any]]] = []
+    current_row: List[Dict[str, Any]] = [dets[0]]
+    prev_y = dets[0]["_center_y"]
+
+    for d in dets[1:]:
+        cy = d["_center_y"]
+
+        # ถ้าห่างจากตัวก่อนหน้าเยอะมาก ถือว่าเริ่มหวี/แถวใหม่
+        if abs(cy - prev_y) > row_gap:
+            rows.append(current_row)
+            current_row = [d]
+        else:
+            current_row.append(d)
+
+        prev_y = cy
+
+    rows.append(current_row)
+
+    # เรียงกลุ่มจากบนลงล่าง
+    rows.sort(
+        key=lambda row: float(np.mean([d["_center_y"] for d in row]))
+    )
+
+    ordered: List[Dict[str, Any]] = []
+
+    # ในแต่ละหวี/แถว เรียงซ้ายไปขวา
+    for row in rows:
+        row.sort(key=lambda d: d["_center_x"])
+        ordered.extend(row)
+
+    return ordered
+
+
 class YOLOService:
     def __init__(
         self,
-        model_path: str | None = None,
-        cls_model_path: str | None = None,
+        model_path: Optional[str] = None,
+        cls_model_path: Optional[str] = None,
     ):
         """
         model_path = Model 1 Detection
@@ -64,7 +136,9 @@ class YOLOService:
         1. Detect banana fingers from bunch image
         2. Crop each detected banana finger
         3. Classify ripeness per crop
-        4. Sort detections from left to right
+        4. Sort by bunch row:
+            - upper bunch left to right
+            - lower bunch left to right
         5. Return JSON-friendly dict + annotated image
         """
 
@@ -119,12 +193,18 @@ class YOLOService:
 
                 ripeness_th = THAI_LABELS.get(ripeness, ripeness)
 
+                center_x = float((x1_i + x2_i) / 2)
+                center_y = float((y1_i + y2_i) / 2)
+                box_h = float(y2_i - y1_i)
+
                 detections.append({
-                    # index เดี๋ยวจะ re-index ใหม่หลัง sort
+                    # index จะ re-index ใหม่หลัง sort
                     "index": i,
 
-                    # ใช้สำหรับ sort ซ้ายไปขวา
-                    "_center_x": float((x1_i + x2_i) / 2),
+                    # field ภายใน ใช้ sort
+                    "_center_x": center_x,
+                    "_center_y": center_y,
+                    "_box_h": box_h,
 
                     # ข้อมูลจาก Model 1
                     "class_id": cls_id,
@@ -144,14 +224,15 @@ class YOLOService:
                     "ripeness_conf": round(ripeness_conf, 4),
                 })
 
-        # ✅ เรียงจากซ้ายไปขวา ตามแกน X กลางของ bbox
-        detections.sort(key=lambda d: d["_center_x"])
+        # ✅ เรียงแบบ หวีบนซ้าย→ขวา แล้วหวีล่างซ้าย→ขวา
+        detections = sort_detections_by_bunch_rows(detections, image_height=h)
 
         # ✅ re-index ใหม่หลังเรียงแล้ว
         for new_index, d in enumerate(detections, start=1):
             d["index"] = new_index
 
-        # ✅ รอบสอง: วาดกรอบหลัง sort แล้ว เพื่อให้เลขบนภาพตรงกับรายละเอียดรายลูก
+        # ✅ รอบสอง: วาดกรอบหลัง sort แล้ว
+        # เลขบนภาพจะตรงกับรายละเอียดรายลูกใน UI
         for d in detections:
             x1_i, y1_i, x2_i, y2_i = map(int, d["bbox_xyxy"])
 
@@ -159,10 +240,9 @@ class YOLOService:
             ripeness_conf = float(d["ripeness_conf"])
             color = BOX_COLORS.get(ripeness, (0, 255, 0))
 
-            # label ภาษาอังกฤษ เพื่อกัน OpenCV ขึ้น ???? กับภาษาไทย
+            # ใช้ภาษาอังกฤษ กัน OpenCV แสดง ???? กับภาษาไทย
             label = f'{d["index"]}. {ripeness.upper()} {ripeness_conf:.2f}'
 
-            # วาดกรอบ
             cv2.rectangle(
                 annotated,
                 (x1_i, y1_i),
@@ -171,7 +251,6 @@ class YOLOService:
                 2,
             )
 
-            # ตำแหน่งข้อความ
             text_x = x1_i
             text_y = max(25, y1_i - 8)
 
@@ -189,6 +268,8 @@ class YOLOService:
         # ✅ ลบ field ภายในออกก่อนส่ง JSON กลับไป
         for d in detections:
             d.pop("_center_x", None)
+            d.pop("_center_y", None)
+            d.pop("_box_h", None)
 
         summary = {
             "green": sum(1 for d in detections if d["ripeness"] == "green"),
