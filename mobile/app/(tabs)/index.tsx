@@ -1,7 +1,9 @@
 import { View, Text, Button, Image, Pressable, ScrollView } from "react-native";
 import { useMemo, useState } from "react";
+import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
+
 
 const API_BASE = "http://172.20.10.2:8000";
 const TARGET_WIDTH = 1280; // ✅ resize กันไฟล์ใหญ่เกิน
@@ -180,9 +182,14 @@ export default function HomeScreen() {
           <Button title="📸 ถ่ายรูป" onPress={takePhoto} />
           <Button title="🖼 เลือกรูป" onPress={pickImage} />
           <Button
-            title={loading ? "กำลังทำงาน..." : "Detect 🍌"}
-            onPress={detect}
-            disabled={loading}
+              title={loading ? "กำลังทำงาน..." : "Detect 🍌"}
+              onPress={detect}
+              disabled={loading}
+          />
+
+        <Button
+          title="📹 ตรวจแบบวิดีโอ"
+          onPress={() => router.push("/video-detect" as any)}
           />
         </View>
 
