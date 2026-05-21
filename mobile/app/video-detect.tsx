@@ -1,138 +1,166 @@
-// app/video-detect.tsx
-
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { router } from "expo-router";
-import React from "react";
-import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 export default function VideoDetectScreen() {
-    return (
-        <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>📹 ตรวจแบบวิดีโอ</Text>
+    const [permission, requestPermission] = useCameraPermissions();
 
-        <Text style={styles.subtitle}>
-            โหมดนี้จะใช้กล้องเพื่อจับภาพเป็นเฟรมต่อเนื่อง แล้วส่งให้ AI วิเคราะห์แบบใกล้เคียงเรียลไทม์
+    if (!permission) {
+        return (
+        <View
+            style={{
+                flex: 1,
+                backgroundColor: "#fff",
+                justifyContent: "center",
+                alignItems: "center",
+                padding: 20,
+        }}
+        >
+            <Text style={{ fontSize: 22, fontWeight: "800" }}>
+            กำลังตรวจสอบสิทธิ์กล้อง...
+            </Text>
+        </View>
+    );
+    }
+
+    if (!permission.granted) {
+        return (
+            <View
+                style={{
+            flex: 1,
+            backgroundColor: "#fff",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+            gap: 16,
+        }}
+        >
+        <Text style={{ fontSize: 28, fontWeight: "800", textAlign: "center" }}>
+            📷 ต้องอนุญาตใช้กล้องก่อน
         </Text>
 
-        <View style={styles.mockCameraBox}>
-            <Text style={styles.mockCameraText}>พื้นที่กล้องสด</Text>
-            <Text style={styles.mockCameraSubText}>Step 4 จะใส่กล้องจริงตรงนี้</Text>
-        </View>
+        <Text style={{ fontSize: 16, color: "#666", textAlign: "center" }}>
+            BananaVision ต้องใช้กล้องเพื่อจับภาพกล้วยแบบต่อเนื่อง
+        </Text>
 
-        <View style={styles.card}>
-            <Text style={styles.cardTitle}>📊 ผลลัพธ์ล่าสุด</Text>
-            <Text style={styles.text}>ตรวจเจอ: - ลูก</Text>
-            <Text style={styles.text}>ดิบ: - ลูก</Text>
-            <Text style={styles.text}>ห่าม: - ลูก</Text>
-            <Text style={styles.text}>สุก: - ลูก</Text>
-            <Text style={styles.text}>เวลา inference: - ms</Text>
-        </View>
-
-        <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.startButton}>
-                <Text style={styles.buttonText}>เริ่มตรวจ</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.stopButton}>
-                <Text style={styles.buttonText}>หยุดตรวจ</Text>
-            </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Text style={styles.backButtonText}>← กลับ</Text>
+        <TouchableOpacity
+            onPress={requestPermission}
+            style={{
+                backgroundColor: "#22c55e",
+                paddingVertical: 14,
+                paddingHorizontal: 24,
+                borderRadius: 14,
+            }}
+        >
+            <Text style={{ color: "#fff", fontSize: 18, fontWeight: "800" }}>
+                อนุญาตใช้กล้อง
+            </Text>
         </TouchableOpacity>
-    </ScrollView>
+
+        <TouchableOpacity onPress={() => router.back()}>
+            <Text style={{ color: "#2563eb", fontSize: 18, fontWeight: "700" }}>
+            ← กลับ
+            </Text>
+        </TouchableOpacity>
+        </View>
+    );
+    }
+
+    return (
+        <ScrollView style={{ flex: 1, backgroundColor: "#fff" }}>
+            <View style={{ padding: 16, gap: 18 }}>
+                <Text style={{ fontSize: 30, fontWeight: "900", textAlign: "center" }}>
+                    📹 ตรวจแบบวิดีโอ
+                </Text>
+
+        <Text
+            style={{
+            color: "#666",
+            fontSize: 16,
+            textAlign: "center",
+            lineHeight: 24,
+            }}
+        >
+            โหมดนี้จะใช้กล้องเพื่อจับภาพเป็นเฟรมต่อเนื่อง แล้วส่งให้ AI
+            วิเคราะห์แบบใกล้เคียงเรียลไทม์
+        </Text>
+
+        <View
+            style={{
+                height: 440,
+                borderRadius: 24,
+                overflow: "hidden",
+                backgroundColor: "#111827",
+            }}
+            >
+            <CameraView
+                style={{ flex: 1 }}
+                facing="back"
+                active={true}
+            />
+        </View>
+
+        <View
+            style={{
+                padding: 18,
+                borderRadius: 18,
+                backgroundColor: "#F3F4F6",
+                gap: 8,
+            }}
+        >
+            <Text style={{ fontSize: 24, fontWeight: "900" }}>
+                📊 ผลลัพธ์ล่าสุด
+            </Text>
+
+            <Text style={{ fontSize: 18 }}>ตรวจเจอ: - ลูก</Text>
+            <Text style={{ fontSize: 18 }}>ดิบ: - ลูก</Text>
+            <Text style={{ fontSize: 18 }}>ห่าม: - ลูก</Text>
+            <Text style={{ fontSize: 18 }}>สุก: - ลูก</Text>
+            <Text style={{ fontSize: 18 }}>เวลา inference: - ms</Text>
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 12 }}>
+            <TouchableOpacity
+            style={{
+                flex: 1,
+                backgroundColor: "#22c55e",
+                paddingVertical: 16,
+                borderRadius: 16,
+                alignItems: "center",
+            }}
+            >
+                <Text style={{ color: "#fff", fontSize: 20, fontWeight: "900" }}>
+                    เริ่มตรวจ
+                </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={{
+                flex: 1,
+                backgroundColor: "#ef4444",
+                paddingVertical: 16,
+                borderRadius: 16,
+                alignItems: "center",
+                }}
+            >
+            <Text style={{ color: "#fff", fontSize: 20, fontWeight: "900" }}>
+                หยุดตรวจ
+            </Text>
+            </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+            onPress={() => router.back()}
+            style={{
+                paddingVertical: 14,
+                alignItems: "center",
+            }}
+        >
+            <Text style={{ color: "#2563eb", fontSize: 20, fontWeight: "800" }}>
+                ← กลับ
+            </Text>
+            </TouchableOpacity>
+        </View>
+        </ScrollView>
     );
 }
-
-const styles = StyleSheet.create({
-    container: {
-    padding: 20,
-    backgroundColor: "#ffffff",
-    minHeight: "100%",
-    },
-    title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    marginBottom: 10,
-    textAlign: "center",
-    },
-    subtitle: {
-    fontSize: 16,
-    color: "#555",
-    textAlign: "center",
-    marginBottom: 20,
-    lineHeight: 24,
-    },
-    mockCameraBox: {
-    height: 420,
-    backgroundColor: "#111827",
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 18,
-    },
-    mockCameraText: {
-    color: "#ffffff",
-    fontSize: 24,
-    fontWeight: "bold",
-    },
-    mockCameraSubText: {
-    color: "#d1d5db",
-    fontSize: 15,
-    marginTop: 8,
-    },
-    card: {
-    backgroundColor: "#f3f4f6",
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 18,
-    },
-    cardTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 12,
-    },
-    text: {
-    fontSize: 18,
-    marginBottom: 6,
-    },
-    buttonRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 20,
-    },
-    startButton: {
-    flex: 1,
-    backgroundColor: "#22c55e",
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: "center",
-    },
-    stopButton: {
-    flex: 1,
-    backgroundColor: "#ef4444",
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: "center",
-    },
-    buttonText: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "bold",
-    },
-    backButton: {
-    paddingVertical: 14,
-    alignItems: "center",
-    },
-    backButtonText: {
-    color: "#2563eb",
-    fontSize: 18,
-        fontWeight: "bold",
-    },
-});
