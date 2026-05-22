@@ -1,4 +1,5 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
+import * as ImageManipulator from "expo-image-manipulator";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 import {
@@ -8,6 +9,8 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+
+const TARGET_WIDTH = 1280;
 
 export default function VideoDetectScreen() {
     const [permission, requestPermission] = useCameraPermissions();
@@ -19,6 +22,11 @@ export default function VideoDetectScreen() {
     const [isCapturing, setIsCapturing] = useState(false);
     const [latestFrameUri, setLatestFrameUri] = useState<string | null>(null);
     const [captureStatus, setCaptureStatus] = useState("");
+    const [frameInfo, setFrameInfo] = useState<{
+        width?: number;
+        height?: number;
+        uri?: string;
+    } | null>(null);
 
     const startDetecting = () => {
         setIsRunning(true);
@@ -31,7 +39,7 @@ export default function VideoDetectScreen() {
     const captureFrameOnce = async () => {
         if (!cameraRef.current) {
             setCaptureStatus("❌ ยังไม่พบกล้อง");
-            return;
+        return;
     }
 
     if (!cameraReady) {
@@ -41,10 +49,11 @@ export default function VideoDetectScreen() {
 
     try {
         setIsCapturing(true);
-        setCaptureStatus("กำลังจับภาพ 1 เฟรม...");
+        setCaptureStatus("กำลังจับภาพและเตรียมเฟรม...");
 
+      // 1) ถ่ายภาพจากกล้อง 1 เฟรม
         const photo = await cameraRef.current.takePictureAsync({
-            quality: 0.6,
+            quality: 0.8,
             base64: false,
             skipProcessing: false,
         });
@@ -54,9 +63,25 @@ export default function VideoDetectScreen() {
             return;
         }
 
-        setLatestFrameUri(photo.uri);
-        setCaptureStatus("✅ จับภาพ 1 เฟรมสำเร็จ");
-        } catch (err: any) {
+      // 2) Resize + Compress + แปลงเป็น JPEG
+        const prepared = await ImageManipulator.manipulateAsync(
+            photo.uri,
+            [{ resize: { width: TARGET_WIDTH } }],
+            {
+            compress: 0.85,
+            format: ImageManipulator.SaveFormat.JPEG,
+        }
+        );
+
+        setLatestFrameUri(prepared.uri);
+        setFrameInfo({
+        width: prepared.width,
+        height: prepared.height,
+        uri: prepared.uri,
+        });
+
+        setCaptureStatus("✅ จับภาพและเตรียมเฟรมสำเร็จ");
+    } catch (err: any) {
         setCaptureStatus(`❌ ${String(err?.message || err)}`);
     } finally {
         setIsCapturing(false);
@@ -64,7 +89,7 @@ export default function VideoDetectScreen() {
     };
 
     if (!permission) {
-        return (
+    return (
         <View
         style={{
             flex: 1,
@@ -133,10 +158,10 @@ export default function VideoDetectScreen() {
 
         <Text
             style={{
-            color: "#666",
-            fontSize: 16,
-            textAlign: "center",
-            lineHeight: 24,
+                color: "#666",
+                fontSize: 16,
+                textAlign: "center",
+                lineHeight: 24,
             }}
         >
             โหมดนี้จะใช้กล้องเพื่อจับภาพเป็นเฟรมต่อเนื่อง แล้วส่งให้ AI
@@ -146,11 +171,11 @@ export default function VideoDetectScreen() {
         {/* กล้องสด */}
         <View
             style={{
-            height: 440,
-            borderRadius: 24,
-            overflow: "hidden",
-            backgroundColor: "#111827",
-            position: "relative",
+                height: 440,
+                borderRadius: 24,
+                overflow: "hidden",
+                backgroundColor: "#111827",
+                position: "relative",
             }}
         >
             <CameraView
@@ -174,7 +199,7 @@ export default function VideoDetectScreen() {
                 paddingHorizontal: 12,
                 borderRadius: 999,
                 opacity: 0.9,
-                }}
+            }}
             >
             <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>
                 {isRunning ? "● กำลังตรวจ" : "หยุดอยู่"}
@@ -185,10 +210,10 @@ export default function VideoDetectScreen() {
         {/* Status Card */}
         <View
             style={{
-            padding: 16,
-            borderRadius: 18,
-            backgroundColor: isRunning ? "#ECFDF5" : "#F3F4F6",
-            gap: 8,
+                padding: 16,
+                borderRadius: 18,
+                backgroundColor: isRunning ? "#ECFDF5" : "#F3F4F6",
+                gap: 8,
             }}
         >
             <Text style={{ fontSize: 22, fontWeight: "900" }}>สถานะระบบ</Text>
@@ -198,21 +223,27 @@ export default function VideoDetectScreen() {
             </Text>
 
             <Text style={{ fontSize: 16, color: "#666" }}>
-            กล้อง: {cameraReady ? "พร้อม" : "กำลังโหลด..."}
+                กล้อง: {cameraReady ? "พร้อม" : "กำลังโหลด..."}
             </Text>
 
             {!!captureStatus && (
-            <Text style={{ fontSize: 16, color: "#555", fontWeight: "700" }}>
+                <Text style={{ fontSize: 16, color: "#555", fontWeight: "700" }}>
                 {captureStatus}
             </Text>
             )}
 
+            {frameInfo && (
+                <Text style={{ fontSize: 15, color: "#666" }}>
+                เฟรมที่เตรียมแล้ว: {frameInfo.width} x {frameInfo.height}px
+            </Text>
+            )}
+
             <Text style={{ fontSize: 15, color: "#666" }}>
-                Step 6 ทดสอบจับภาพจากกล้อง 1 เฟรม ยังไม่ส่งเข้า Backend
+            Step 7 ย่อภาพ + บีบอัด + แปลงเป็น JPEG ยังไม่ส่งเข้า Backend
             </Text>
         </View>
 
-        {/* ปุ่ม Capture Frame */}
+        {/* ปุ่ม Capture + Prepare Frame */}
         <TouchableOpacity
             onPress={captureFrameOnce}
             disabled={isCapturing || !cameraReady}
@@ -224,24 +255,26 @@ export default function VideoDetectScreen() {
             }}
         >
             <Text style={{ color: "#fff", fontSize: 20, fontWeight: "900" }}>
-            {isCapturing ? "กำลังถ่ายเฟรม..." : "📸 ถ่ายเฟรมทดสอบ 1 ครั้ง"}
+            {isCapturing
+                ? "กำลังเตรียมเฟรม..."
+                : "📸 ถ่ายและเตรียมเฟรมทดสอบ"}
             </Text>
         </TouchableOpacity>
 
-        {/* แสดงเฟรมล่าสุดที่จับได้ */}
+        {/* แสดงเฟรมล่าสุดที่เตรียมแล้ว */}
         {latestFrameUri && (
             <View style={{ gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "900" }}>
-                🖼 เฟรมล่าสุดที่จับได้
+                🖼 เฟรมล่าสุดที่เตรียมแล้ว
             </Text>
 
             <Image
                 source={{ uri: latestFrameUri }}
                 style={{
-                width: "100%",
-                height: 320,
-                borderRadius: 18,
-                backgroundColor: "#F3F4F6",
+                    width: "100%",
+                    height: 320,
+                    borderRadius: 18,
+                    backgroundColor: "#F3F4F6",
                 }}
                 resizeMode="contain"
             />
@@ -250,10 +283,10 @@ export default function VideoDetectScreen() {
 
         <View
             style={{
-            padding: 18,
-            borderRadius: 18,
-            backgroundColor: "#F3F4F6",
-            gap: 8,
+                padding: 18,
+                borderRadius: 18,
+                backgroundColor: "#F3F4F6",
+                gap: 8,
             }}
         >
             <Text style={{ fontSize: 24, fontWeight: "900" }}>
@@ -305,8 +338,8 @@ export default function VideoDetectScreen() {
         <TouchableOpacity
             onPress={() => router.back()}
             style={{
-                paddingVertical: 14,
-                alignItems: "center",
+            paddingVertical: 14,
+            alignItems: "center",
             }}
         >
             <Text style={{ color: "#2563eb", fontSize: 20, fontWeight: "800" }}>
