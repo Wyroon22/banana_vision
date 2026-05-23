@@ -1,7 +1,7 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
 import { router } from "expo-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     Image,
     ScrollView,
@@ -15,15 +15,20 @@ const TARGET_WIDTH = 1280;
 // ถ้า IP Hotspot เปลี่ยน ให้แก้ตรงนี้
 const API_BASE = "http://172.20.10.2:8000";
 
+// เวลาหน่วงหลังประมวลผลเสร็จ ก่อนยิงเฟรมถัดไป
+const LOOP_DELAY_MS = 700;
+
 export default function VideoDetectScreen() {
     const [permission, requestPermission] = useCameraPermissions();
 
     const cameraRef = useRef<CameraView | null>(null);
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isRunningRef = useRef(false);
+    const isProcessingRef = useRef(false);
 
     const [isRunning, setIsRunning] = useState(false);
     const [cameraReady, setCameraReady] = useState(false);
-    const [isCapturing, setIsCapturing] = useState(false);
-    const [isSending, setIsSending] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
 
     const [latestFrameUri, setLatestFrameUri] = useState<string | null>(null);
     const [annotatedUrl, setAnnotatedUrl] = useState<string | null>(null);
@@ -38,6 +43,13 @@ export default function VideoDetectScreen() {
     } | null>(null);
 
     const [detectResult, setDetectResult] = useState<any>(null);
+    const [frameCount, setFrameCount] = useState(0);
+
+    useEffect(() => {
+        return () => {
+        stopDetecting();
+    };
+    }, []);
 
     const buildBackendImageUrl = (path: string) => {
         const normalizedPath = path.replace(/\\/g, "/");
@@ -49,18 +61,10 @@ export default function VideoDetectScreen() {
     return `${API_BASE}${normalizedPath}?t=${Date.now()}`;
     };
 
-    const startDetecting = () => {
-        setIsRunning(true);
-    };
-
-    const stopDetecting = () => {
-        setIsRunning(false);
-    };
-
-    const captureFrameOnce = async () => {
+    const detectOneFrame = async () => {
         if (!cameraRef.current) {
-        setCaptureStatus("❌ ยังไม่พบกล้อง");
-        return;
+            setCaptureStatus("❌ ยังไม่พบกล้อง");
+            return;
     }
 
     if (!cameraReady) {
@@ -68,15 +72,19 @@ export default function VideoDetectScreen() {
         return;
     }
 
+    if (isProcessingRef.current) {
+        return;
+    }
+
     try {
-        setIsCapturing(true);
+        isProcessingRef.current = true;
+        setIsProcessing(true);
+
         setCaptureStatus("กำลังจับภาพและเตรียมเฟรม...");
-        setBackendStatus("");
-        setDetectResult(null);
-        setAnnotatedUrl(null);
+        setBackendStatus("กำลังส่งเฟรมเข้า Backend /detect...");
 
         const photo = await cameraRef.current.takePictureAsync({
-            quality: 0.8,
+            quality: 0.7,
             base64: false,
             skipProcessing: false,
         });
@@ -90,8 +98,8 @@ export default function VideoDetectScreen() {
             photo.uri,
             [{ resize: { width: TARGET_WIDTH } }],
             {
-            compress: 0.85,
-            format: ImageManipulator.SaveFormat.JPEG,
+                compress: 0.85,
+                format: ImageManipulator.SaveFormat.JPEG,
             }
         );
 
@@ -103,29 +111,11 @@ export default function VideoDetectScreen() {
         });
 
         setCaptureStatus("✅ จับภาพและเตรียมเฟรมสำเร็จ");
-    } catch (err: any) {
-        setCaptureStatus(`❌ ${String(err?.message || err)}`);
-    } finally {
-        setIsCapturing(false);
-    }
-    };
-
-    const sendFrameToBackend = async () => {
-    if (!latestFrameUri) {
-        setBackendStatus("❌ ยังไม่มีเฟรมที่เตรียมแล้ว");
-        return;
-    }
-
-    try {
-        setIsSending(true);
-        setBackendStatus("กำลังส่งเฟรมเข้า Backend /detect...");
-        setDetectResult(null);
-        setAnnotatedUrl(null);
 
         const formData = new FormData();
 
         formData.append("file", {
-            uri: latestFrameUri,
+            uri: prepared.uri,
             name: `video_frame_${Date.now()}.jpg`,
             type: "image/jpeg",
         } as any);
@@ -150,45 +140,90 @@ export default function VideoDetectScreen() {
         }
 
         const total =
-            json?.count ??
-            json?.total_detections ??
-            json?.detections?.length ??
-            0;
+        json?.count ??
+        json?.total_detections ??
+        json?.detections?.length ??
+        0;
 
         const ms = json?.inference_ms ?? "-";
 
+        setFrameCount((prev) => prev + 1);
         setBackendStatus(`✅ ส่งสำเร็จ • ตรวจเจอ ${total} ลูก • ${ms} ms`);
-    } catch (err: any) {
+            } catch (err: any) {
         setBackendStatus(
-        `❌ ส่ง Backend ไม่สำเร็จ: ${String(err?.message || err)}`
+            `❌ ส่ง Backend ไม่สำเร็จ: ${String(err?.message || err)}`
         );
     } finally {
-        setIsSending(false);
+        isProcessingRef.current = false;
+        setIsProcessing(false);
     }
     };
 
+    const runDetectLoop = async () => {
+        if (!isRunningRef.current) return;
+
+        await detectOneFrame();
+
+        if (!isRunningRef.current) return;
+
+        timerRef.current = setTimeout(() => {
+        runDetectLoop();
+        }, LOOP_DELAY_MS);
+    };
+
+    const startDetecting = () => {
+        if (!cameraReady) {
+            setCaptureStatus("⏳ กล้องยังไม่พร้อม");
+            return;
+    }
+
+    if (isRunningRef.current) return;
+
+    setFrameCount(0);
+    setDetectResult(null);
+    setAnnotatedUrl(null);
+
+    isRunningRef.current = true;
+    setIsRunning(true);
+    setBackendStatus("เริ่มตรวจแบบวิดีโอ Near Real-time...");
+
+    runDetectLoop();
+    };
+
+    const stopDetecting = () => {
+        isRunningRef.current = false;
+        setIsRunning(false);
+
+    if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+    }
+
+    setBackendStatus("หยุดตรวจแล้ว");
+    };
+
     if (!permission) {
-    return (
+        return (
         <View
-        style={{
-            flex: 1,
-            backgroundColor: "#fff",
-            justifyContent: "center",
-            alignItems: "center",
-            padding: 20,
+            style={{
+                flex: 1,
+                backgroundColor: "#fff",
+                justifyContent: "center",
+                alignItems: "center",
+                padding: 20,
         }}
         >
-        <Text style={{ fontSize: 22, fontWeight: "800" }}>
+            <Text style={{ fontSize: 22, fontWeight: "800" }}>
             กำลังตรวจสอบสิทธิ์กล้อง...
-        </Text>
+            </Text>
         </View>
-    );
+        );
     }
 
     if (!permission.granted) {
     return (
-        <View
-        style={{
+            <View
+            style={{
             flex: 1,
             backgroundColor: "#fff",
             justifyContent: "center",
@@ -221,7 +256,7 @@ export default function VideoDetectScreen() {
 
         <TouchableOpacity onPress={() => router.back()}>
             <Text style={{ color: "#2563eb", fontSize: 18, fontWeight: "700" }}>
-            ← กลับ
+                ← กลับ
             </Text>
         </TouchableOpacity>
         </View>
@@ -240,22 +275,22 @@ export default function VideoDetectScreen() {
     const inferenceMs = detectResult?.inference_ms ?? "-";
 
     return (
-        <ScrollView style={{ flex: 1, backgroundColor: "#fff" }}>
-            <View style={{ padding: 16, gap: 18 }}>
-        <Text style={{ fontSize: 30, fontWeight: "900", textAlign: "center" }}>
-            📹 ตรวจแบบวิดีโอ
-        </Text>
+    <ScrollView style={{ flex: 1, backgroundColor: "#fff" }}>
+        <View style={{ padding: 16, gap: 18 }}>
+            <Text style={{ fontSize: 30, fontWeight: "900", textAlign: "center" }}>
+                📹 ตรวจแบบวิดีโอ
+            </Text>
 
         <Text
-                style={{
+            style={{
                 color: "#666",
                 fontSize: 16,
                 textAlign: "center",
                 lineHeight: 24,
             }}
         >
-            โหมดนี้จะใช้กล้องเพื่อจับภาพเป็นเฟรมต่อเนื่อง แล้วส่งให้ AI
-            วิเคราะห์แบบใกล้เคียงเรียลไทม์
+            กดเริ่มตรวจ แล้วระบบจะจับภาพจากกล้องเป็นเฟรมต่อเนื่อง ส่งให้ AI
+            วิเคราะห์แบบ Near Real-time
         </Text>
 
         <View
@@ -268,40 +303,65 @@ export default function VideoDetectScreen() {
             }}
         >
             <CameraView
-            ref={cameraRef}
-            style={{ flex: 1 }}
-            facing="back"
-            active={true}
-            onCameraReady={() => {
-                setCameraReady(true);
-                setCaptureStatus("✅ กล้องพร้อมใช้งาน");
+                ref={cameraRef}
+                style={{ flex: 1 }}
+                facing="back"
+                active={true}
+                onCameraReady={() => {
+                    setCameraReady(true);
+                    setCaptureStatus("✅ กล้องพร้อมใช้งาน");
             }}
             />
 
             <View
-            style={{
-                position: "absolute",
-                top: 14,
-                left: 14,
-                backgroundColor: isRunning ? "#dc2626" : "#111827",
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-                borderRadius: 999,
-                opacity: 0.9,
+                style={{
+                    position: "absolute",
+                    top: 14,
+                    left: 14,
+                    backgroundColor: isRunning ? "#dc2626" : "#111827",
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 999,
+                    opacity: 0.9,
             }}
             >
             <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>
                 {isRunning ? "● กำลังตรวจ" : "หยุดอยู่"}
             </Text>
             </View>
+
+            {isProcessing && (
+                <View
+                    style={{
+                    position: "absolute",
+                    bottom: 14,
+                    left: 14,
+                    right: 14,
+                    backgroundColor: "#00000099",
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    borderRadius: 14,
+                }}
+            >
+                <Text
+                style={{
+                    color: "#fff",
+                    fontWeight: "800",
+                    textAlign: "center",
+                }}
+                >
+                กำลังวิเคราะห์เฟรมล่าสุด...
+                </Text>
+            </View>
+            )}
         </View>
 
         <View
             style={{
-                padding: 16,
-                borderRadius: 18,
-                backgroundColor: isRunning ? "#ECFDF5" : "#F3F4F6",
-                gap: 8,
+            padding: 16,
+            borderRadius: 18,
+            backgroundColor: isRunning ? "#ECFDF5" : "#F3F4F6",
+            gap: 8,
             }}
         >
             <Text style={{ fontSize: 22, fontWeight: "900" }}>สถานะระบบ</Text>
@@ -314,131 +374,40 @@ export default function VideoDetectScreen() {
                 กล้อง: {cameraReady ? "พร้อม" : "กำลังโหลด..."}
             </Text>
 
+            <Text style={{ fontSize: 16, color: "#666" }}>
+                จำนวนเฟรมที่วิเคราะห์: {frameCount}
+            </Text>
+
             {!!captureStatus && (
                 <Text style={{ fontSize: 16, color: "#555", fontWeight: "700" }}>
-                {captureStatus}
+                    {captureStatus}
                 </Text>
             )}
 
             {!!backendStatus && (
-            <Text style={{ fontSize: 16, color: "#555", fontWeight: "700" }}>
+                <Text style={{ fontSize: 16, color: "#555", fontWeight: "700" }}>
                 {backendStatus}
             </Text>
             )}
 
             {frameInfo && (
-                <Text style={{ fontSize: 15, color: "#666" }}>
-                    เฟรมที่เตรียมแล้ว: {frameInfo.width} x {frameInfo.height}px
-                </Text>
+            <Text style={{ fontSize: 15, color: "#666" }}>
+                    เฟรมล่าสุด: {frameInfo.width} x {frameInfo.height}px
+            </Text>
             )}
 
             <Text style={{ fontSize: 15, color: "#666" }}>
-                Step 9 ส่งเฟรมเข้า Backend และแสดงภาพผลลัพธ์ตีกรอบ
+                Step 10 ตรวจอัตโนมัติแบบ Near Real-time จนกว่าจะกดหยุด
             </Text>
-        </View>
-
-        <TouchableOpacity
-            onPress={captureFrameOnce}
-            disabled={isCapturing || !cameraReady || isSending}
-            style={{
-            backgroundColor:
-                isCapturing || !cameraReady || isSending ? "#93c5fd" : "#2563eb",
-            paddingVertical: 16,
-            borderRadius: 16,
-            alignItems: "center",
-            }}
-        >
-            <Text style={{ color: "#fff", fontSize: 20, fontWeight: "900" }}>
-                {isCapturing
-                ? "กำลังเตรียมเฟรม..."
-                : "📸 ถ่ายและเตรียมเฟรมทดสอบ"}
-            </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-            onPress={sendFrameToBackend}
-            disabled={!latestFrameUri || isSending || isCapturing}
-            style={{
-            backgroundColor:
-                !latestFrameUri || isSending || isCapturing
-                ? "#86efac"
-                : "#16a34a",
-            paddingVertical: 16,
-            borderRadius: 16,
-            alignItems: "center",
-            }}
-        >
-            <Text style={{ color: "#fff", fontSize: 20, fontWeight: "900" }}>
-            {isSending
-                ? "กำลังส่งเข้า Backend..."
-                : "📡 ส่งเฟรมเข้า Backend /detect"}
-            </Text>
-        </TouchableOpacity>
-
-        {latestFrameUri && (
-            <View style={{ gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "900" }}>
-                🖼 เฟรมล่าสุดที่เตรียมแล้ว
-            </Text>
-
-            <Image
-                source={{ uri: latestFrameUri }}
-                style={{
-                    width: "100%",
-                    height: 320,
-                    borderRadius: 18,
-                    backgroundColor: "#F3F4F6",
-                }}
-                resizeMode="contain"
-            />
-            </View>
-        )}
-
-        {annotatedUrl && (
-            <View style={{ gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "900" }}>
-                ✅ ผลลัพธ์ตีกรอบจาก Backend
-            </Text>
-
-            <Image
-                source={{ uri: annotatedUrl }}
-                style={{
-                    width: "100%",
-                    height: 360,
-                    borderRadius: 18,
-                    backgroundColor: "#F3F4F6",
-                }}
-                resizeMode="contain"
-            />
-            </View>
-        )}
-
-        <View
-            style={{
-                padding: 18,
-                borderRadius: 18,
-                backgroundColor: "#F3F4F6",
-                gap: 8,
-            }}
-        >
-            <Text style={{ fontSize: 24, fontWeight: "900" }}>
-                📊 ผลลัพธ์ล่าสุดจาก Backend
-            </Text>
-
-            <Text style={{ fontSize: 18 }}>ตรวจเจอ: {total} ลูก</Text>
-            <Text style={{ fontSize: 18 }}>ดิบ: {green} ลูก</Text>
-            <Text style={{ fontSize: 18 }}>ห่าม: {breaker} ลูก</Text>
-            <Text style={{ fontSize: 18 }}>สุก: {ripe} ลูก</Text>
-            <Text style={{ fontSize: 18 }}>เวลา inference: {inferenceMs} ms</Text>
         </View>
 
         <View style={{ flexDirection: "row", gap: 12 }}>
             <TouchableOpacity
-            onPress={startDetecting}
-            disabled={isRunning}
-            style={{
+                onPress={startDetecting}
+                disabled={isRunning || !cameraReady}
+                style={{
                 flex: 1,
-                backgroundColor: isRunning ? "#86efac" : "#22c55e",
+                backgroundColor: isRunning || !cameraReady ? "#86efac" : "#22c55e",
                 paddingVertical: 16,
                 borderRadius: 16,
                 alignItems: "center",
@@ -466,8 +435,68 @@ export default function VideoDetectScreen() {
             </TouchableOpacity>
         </View>
 
+        {annotatedUrl && (
+            <View style={{ gap: 10 }}>
+                <Text style={{ fontSize: 22, fontWeight: "900" }}>
+                    ✅ ผลลัพธ์ตีกรอบล่าสุดจาก Backend
+                </Text>
+
+            <Image
+                source={{ uri: annotatedUrl }}
+                style={{
+                    width: "100%",
+                    height: 360,
+                    borderRadius: 18,
+                    backgroundColor: "#F3F4F6",
+                }}
+                resizeMode="contain"
+            />
+            </View>
+        )}
+
+        {latestFrameUri && (
+            <View style={{ gap: 10 }}>
+                <Text style={{ fontSize: 22, fontWeight: "900" }}>
+                    🖼 เฟรมล่าสุดที่ส่งตรวจ
+                </Text>
+
+            <Image
+                source={{ uri: latestFrameUri }}
+                style={{
+                    width: "100%",
+                    height: 300,
+                    borderRadius: 18,
+                    backgroundColor: "#F3F4F6",
+                }}
+                resizeMode="contain"
+            />
+            </View>
+        )}
+
+        <View
+            style={{
+            padding: 18,
+            borderRadius: 18,
+            backgroundColor: "#F3F4F6",
+            gap: 8,
+            }}
+        >
+            <Text style={{ fontSize: 24, fontWeight: "900" }}>
+                📊 ผลลัพธ์ล่าสุดจาก Backend
+            </Text>
+
+            <Text style={{ fontSize: 18 }}>ตรวจเจอ: {total} ลูก</Text>
+            <Text style={{ fontSize: 18 }}>ดิบ: {green} ลูก</Text>
+            <Text style={{ fontSize: 18 }}>ห่าม: {breaker} ลูก</Text>
+            <Text style={{ fontSize: 18 }}>สุก: {ripe} ลูก</Text>
+            <Text style={{ fontSize: 18 }}>เวลา inference: {inferenceMs} ms</Text>
+        </View>
+
         <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => {
+                stopDetecting();
+                router.back();
+            }}
             style={{
                 paddingVertical: 14,
                 alignItems: "center",
@@ -476,8 +505,8 @@ export default function VideoDetectScreen() {
             <Text style={{ color: "#2563eb", fontSize: 20, fontWeight: "800" }}>
                 ← กลับ
             </Text>
-            </TouchableOpacity>
+        </TouchableOpacity>
         </View>
-        </ScrollView>
+    </ScrollView>
     );
 }
