@@ -21,13 +21,14 @@ class Detection:
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 DEFAULT_DETECT_MODEL_PATH = BASE_DIR / "models" / "banana_finger_detect.pt"
-DEFAULT_CLS_MODEL_PATH = BASE_DIR / "models" / "banana_ripeness_cls.pt"
+DEFAULT_CLS_MODEL_PATH = BASE_DIR / "models" / "banana_ripeness_cls_4cls.pt"
 
 
 THAI_LABELS = {
     "green": "ดิบ",
     "breaker": "ห่าม",
     "ripe": "สุก",
+    "overripe": "งอม",
 }
 
 # สีเป็น BGR เพราะ OpenCV ใช้ BGR
@@ -35,6 +36,7 @@ BOX_COLORS = {
     "green": (0, 255, 0),       # เขียว
     "breaker": (0, 200, 255),   # เหลือง/ส้ม
     "ripe": (0, 128, 255),      # ส้มเข้ม
+    "overripe": (0, 0, 255),     # แดง
 }
 
 
@@ -275,6 +277,7 @@ class YOLOService:
             "green": sum(1 for d in detections if d["ripeness"] == "green"),
             "breaker": sum(1 for d in detections if d["ripeness"] == "breaker"),
             "ripe": sum(1 for d in detections if d["ripeness"] == "ripe"),
+            "overripe": sum(1 for d in detections if d["ripeness"] == "overripe"),
         }
 
         return {

@@ -1,10 +1,11 @@
-import { CameraView, useCameraPermissions } from "expo-camera";
+import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
     Image,
     SafeAreaView,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -43,10 +44,9 @@ export default function VideoDetectScreen() {
     const [isRunning, setIsRunning] = useState(false);
     const [cameraReady, setCameraReady] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [facing, setFacing] = useState<CameraType>("back");
 
-    const [latestFrameUri, setLatestFrameUri] = useState<string | null>(null);
     const [annotatedUrl, setAnnotatedUrl] = useState<string | null>(null);
-
     const [captureStatus, setCaptureStatus] = useState("");
     const [backendStatus, setBackendStatus] = useState("");
 
@@ -56,27 +56,27 @@ export default function VideoDetectScreen() {
     });
 
     const [frameInfo, setFrameInfo] = useState<{
-    width?: number;
-    height?: number;
-    uri?: string;
+        width?: number;
+        height?: number;
+        uri?: string;
     } | null>(null);
 
     const [detectResult, setDetectResult] = useState<any>(null);
     const [frameCount, setFrameCount] = useState(0);
 
     useEffect(() => {
-    return () => {
-    isRunningRef.current = false;
+        return () => {
+        isRunningRef.current = false;
 
-    if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-    }
-    };
-}, []);
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+        };
+    }, []);
 
     const buildBackendImageUrl = (path: string) => {
-    const normalizedPath = path.replace(/\\/g, "/");
+        const normalizedPath = path.replace(/\\/g, "/");
 
     if (normalizedPath.startsWith("http")) {
         return `${normalizedPath}?t=${Date.now()}`;
@@ -86,16 +86,16 @@ export default function VideoDetectScreen() {
     };
 
     const getDetections = (): DetectionBox[] => {
-    if (!Array.isArray(detectResult?.detections)) return [];
-    return detectResult.detections;
+        if (!Array.isArray(detectResult?.detections)) return [];
+        return detectResult.detections;
     };
 
     const renderLiveOverlayBoxes = () => {
-    const detections = getDetections();
+        const detections = getDetections();
 
-    if (!frameInfo?.width || !frameInfo?.height) return null;
-    if (!previewSize.width || !previewSize.height) return null;
-    if (detections.length === 0) return null;
+        if (!frameInfo?.width || !frameInfo?.height) return null;
+        if (!previewSize.width || !previewSize.height) return null;
+        if (detections.length === 0) return null;
 
     const scaleX = previewSize.width / frameInfo.width;
     const scaleY = previewSize.height / frameInfo.height;
@@ -106,16 +106,16 @@ export default function VideoDetectScreen() {
         style={[
             styles.overlayLayer,
             {
-            width: previewSize.width,
-            height: previewSize.height,
+                width: previewSize.width,
+                height: previewSize.height,
             },
-        ]}
+            ]}
         >
         {detections.map((d, idx) => {
             const box = d.bbox_xyxy ?? d.box_xyxy ?? d.bbox ?? d.xyxy;
 
             if (!Array.isArray(box) || box.length < 4) {
-            return null;
+                return null;
             }
 
             const [x1, y1, x2, y2] = box.map((v) => Number(v));
@@ -126,13 +126,12 @@ export default function VideoDetectScreen() {
             const height = Math.max((y2 - y1) * scaleY, 1);
 
             const label = d.ripeness_th ?? d.ripeness?.toUpperCase() ?? "banana";
-
             const conf = Number(d.ripeness_conf ?? d.det_conf ?? d.conf ?? 0);
 
             return (
-            <View
-                key={`${d.index ?? idx}-${idx}`}
-                style={[
+                <View
+                    key={`${d.index ?? idx}-${idx}`}
+                    style={[
                 styles.box,
                 {
                     left,
@@ -143,21 +142,34 @@ export default function VideoDetectScreen() {
                 ]}
             >
                 <View style={styles.boxLabel}>
-                <Text style={styles.boxLabelText}>
+                    <Text style={styles.boxLabelText}>
                     {d.index ?? idx + 1}. {label} {conf ? conf.toFixed(2) : ""}
-                </Text>
+                    </Text>
                 </View>
-            </View>
+                </View>
             );
         })}
         </View>
     );
     };
 
+    const toggleCameraFacing = () => {
+        if (isRunningRef.current) {
+            setBackendStatus("กรุณาหยุดตรวจก่อนสลับกล้อง");
+            return;
+        }
+
+    setFacing((current) => (current === "back" ? "front" : "back"));
+    setDetectResult(null);
+    setAnnotatedUrl(null);
+    setFrameCount(0);
+    setBackendStatus("สลับกล้องแล้ว");
+    };
+
     const detectOneFrame = async () => {
-    if (!cameraRef.current) {
-        setCaptureStatus("❌ ยังไม่พบกล้อง");
-        return;
+        if (!cameraRef.current) {
+            setCaptureStatus("❌ ยังไม่พบกล้อง");
+            return;
     }
 
     if (!cameraReady) {
@@ -177,9 +189,9 @@ export default function VideoDetectScreen() {
         setBackendStatus("กำลังส่งเข้า Backend...");
 
         const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.7,
-        base64: false,
-        skipProcessing: false,
+            quality: 0.7,
+            base64: false,
+            skipProcessing: false,
         });
 
         if (!photo?.uri) {
@@ -187,70 +199,69 @@ export default function VideoDetectScreen() {
             return;
         }
 
-        const prepared = await ImageManipulator.manipulateAsync(
+      const prepared = await ImageManipulator.manipulateAsync(
         photo.uri,
         [{ resize: { width: TARGET_WIDTH } }],
         {
-            compress: 0.85,
-            format: ImageManipulator.SaveFormat.JPEG,
+          compress: 0.85,
+          format: ImageManipulator.SaveFormat.JPEG,
         }
-        );
+      );
 
-        setLatestFrameUri(prepared.uri);
-        setFrameInfo({
+      setFrameInfo({
         width: prepared.width,
         height: prepared.height,
         uri: prepared.uri,
-        });
+      });
 
-        setCaptureStatus("✅ จับภาพและเตรียมเฟรมสำเร็จ");
+      setCaptureStatus("✅ จับภาพและเตรียมเฟรมสำเร็จ");
 
-        const formData = new FormData();
+      const formData = new FormData();
 
-        formData.append("file", {
+      formData.append("file", {
         uri: prepared.uri,
         name: `video_frame_${Date.now()}.jpg`,
         type: "image/jpeg",
-        } as any);
+      } as any);
 
-        const res = await fetch(`${API_BASE}/detect`, {
+      const res = await fetch(`${API_BASE}/detect`, {
         method: "POST",
         body: formData,
-        });
+      });
 
-        const json = await res.json();
+      const json = await res.json();
 
-        if (!res.ok) {
-            throw new Error(json?.detail ?? "Detect failed");
-        }
+      if (!res.ok) {
+        throw new Error(json?.detail ?? "Detect failed");
+      }
 
-        setDetectResult(json);
+      setDetectResult(json);
 
-        if (json?.result_url) {
-            setAnnotatedUrl(buildBackendImageUrl(json.result_url));
-        } else {
+      if (json?.result_url) {
+        setAnnotatedUrl(buildBackendImageUrl(json.result_url));
+      } else {
         setAnnotatedUrl(null);
-        }
+      }
 
-        const total =
+      const total =
         json?.count ??
         json?.total_detections ??
         json?.detections?.length ??
         0;
 
-        const ms = json?.inference_ms ?? "-";
+      const ms = json?.inference_ms ?? "-";
 
-        setFrameCount((prev) => prev + 1);
-        setBackendStatus(`✅ ตรวจเจอ ${total} ลูก • ${ms} ms`);
-        } catch (err: any) {
-            setBackendStatus(`❌ Backend ไม่สำเร็จ: ${String(err?.message || err)}`);
+      setFrameCount((prev) => prev + 1);
+      setBackendStatus(`✅ ตรวจเจอ ${total} ลูก • ${ms} ms`);
+    } catch (err: any) {
+      setBackendStatus(`❌ Backend ไม่สำเร็จ: ${String(err?.message || err)}`);
     } finally {
-        isProcessingRef.current = false;
-        setIsProcessing(false);
+      isProcessingRef.current = false;
+      setIsProcessing(false);
     }
-    };
+  };
 
-    const runDetectLoop = async () => {
+  const runDetectLoop = async () => {
     if (!isRunningRef.current) return;
 
     await detectOneFrame();
@@ -258,14 +269,14 @@ export default function VideoDetectScreen() {
     if (!isRunningRef.current) return;
 
     timerRef.current = setTimeout(() => {
-        runDetectLoop();
+      runDetectLoop();
     }, LOOP_DELAY_MS);
-    };
+  };
 
-    const startDetecting = () => {
+  const startDetecting = () => {
     if (!cameraReady) {
-        setCaptureStatus("⏳ กล้องยังไม่พร้อม");
-        return;
+      setCaptureStatus("⏳ กล้องยังไม่พร้อม");
+      return;
     }
 
     if (isRunningRef.current) return;
@@ -273,307 +284,410 @@ export default function VideoDetectScreen() {
     setFrameCount(0);
     setDetectResult(null);
     setAnnotatedUrl(null);
-    setLatestFrameUri(null);
 
     isRunningRef.current = true;
     setIsRunning(true);
     setBackendStatus("เริ่มตรวจแบบ Near Real-time...");
 
     runDetectLoop();
-    };
+  };
 
-    const stopDetecting = () => {
-        isRunningRef.current = false;
-        setIsRunning(false);
+  const stopDetecting = () => {
+    isRunningRef.current = false;
+    setIsRunning(false);
 
     if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
 
     if (cameraReady) {
-        setBackendStatus("หยุดตรวจแล้ว");
+      setBackendStatus("หยุดตรวจแล้ว");
     }
-    };
+  };
 
-    if (!permission) {
+  const saveCurrentImage = () => {
+    if (!annotatedUrl) {
+      setBackendStatus("ยังไม่มีภาพผลลัพธ์ให้บันทึก");
+      return;
+    }
+
+    // อนาคตค่อยเชื่อม Supabase / Database ตรงนี้
+    setBackendStatus("💾 เตรียมบันทึกภาพในอนาคต");
+  };
+
+  if (!permission) {
     return (
-        <SafeAreaView style={styles.centerScreen}>
-            <Text style={styles.permissionTitle}>กำลังตรวจสอบสิทธิ์กล้อง...</Text>
-        </SafeAreaView>
+      <SafeAreaView style={styles.centerScreen}>
+        <Text style={styles.permissionTitle}>กำลังตรวจสอบสิทธิ์กล้อง...</Text>
+      </SafeAreaView>
     );
-    }
+  }
 
-    if (!permission.granted) {
+  if (!permission.granted) {
     return (
-        <SafeAreaView style={styles.centerScreen}>
+      <SafeAreaView style={styles.centerScreen}>
         <Text style={styles.permissionTitle}>📷 ต้องอนุญาตใช้กล้องก่อน</Text>
 
         <Text style={styles.permissionText}>
-            BananaVision ต้องใช้กล้องเพื่อจับภาพกล้วยแบบต่อเนื่อง
+          BananaVision ต้องใช้กล้องเพื่อจับภาพกล้วยแบบต่อเนื่อง
         </Text>
 
         <TouchableOpacity style={styles.allowButton} onPress={requestPermission}>
-            <Text style={styles.allowButtonText}>อนุญาตใช้กล้อง</Text>
+          <Text style={styles.allowButtonText}>อนุญาตใช้กล้อง</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backText}>← กลับ</Text>
+          <Text style={styles.backText}>← กลับ</Text>
         </TouchableOpacity>
-        </SafeAreaView>
+      </SafeAreaView>
     );
-    }
+  }
 
-    const total =
-        detectResult?.count ??
-        detectResult?.total_detections ??
-        detectResult?.detections?.length ??
-        "-";
+  const total =
+    detectResult?.count ??
+    detectResult?.total_detections ??
+    detectResult?.detections?.length ??
+    "-";
 
-    const green = detectResult?.summary?.green ?? "-";
-    const breaker = detectResult?.summary?.breaker ?? "-";
-    const ripe = detectResult?.summary?.ripe ?? "-";
-    const inferenceMs = detectResult?.inference_ms ?? "-";
+  const green = detectResult?.summary?.green ?? "-";
+  const breaker = detectResult?.summary?.breaker ?? "-";
+  const ripe = detectResult?.summary?.ripe ?? "-";
+  const overripe = detectResult?.summary?.overripe ?? "-";
+  const inferenceMs = detectResult?.inference_ms ?? "-";
 
-    return (
+  return (
     <SafeAreaView style={styles.screen}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
         <View style={styles.header}>
-            <Text style={styles.title}>🎥 ตรวจแบบวิดีโอ</Text>
-            <Text style={styles.subtitle}>AI วิเคราะห์แบบ Near Real-time</Text>
+          <TouchableOpacity
+            onPress={() => {
+              stopDetecting();
+              router.back();
+            }}
+            style={styles.headerBackButton}
+          >
+            <Text style={styles.headerBackText}>← กลับ</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.title}>🎥 ตรวจแบบวิดีโอ</Text>
+          <Text style={styles.subtitle}>AI วิเคราะห์แบบ Near Real-time</Text>
         </View>
 
         <View
-            style={styles.cameraPanel}
-            onLayout={(event) => {
+          style={styles.cameraPanel}
+          onLayout={(event) => {
             const { width, height } = event.nativeEvent.layout;
             setPreviewSize({ width, height });
-        }}
+          }}
         >
-        <CameraView
+          <CameraView
             ref={cameraRef}
             style={styles.camera}
-            facing="back"
+            facing={facing}
             active={true}
             onCameraReady={() => {
-                setCameraReady(true);
-                setCaptureStatus("✅ กล้องพร้อมใช้งาน");
+              setCameraReady(true);
+              setCaptureStatus("✅ กล้องพร้อมใช้งาน");
             }}
-        />
+          />
 
-        {renderLiveOverlayBoxes()}
+          {renderLiveOverlayBoxes()}
 
-        <View
+          <View
             style={[
-                styles.liveBadge,
-                { backgroundColor: isRunning ? "#ef4444" : "#111827" },
+              styles.liveBadge,
+              { backgroundColor: isRunning ? "#ef4444" : "#111827" },
             ]}
-        >
+          >
             <Text style={styles.liveBadgeText}>
-                {isRunning ? "● กำลังตรวจ" : "หยุดอยู่"}
+              {isRunning ? "● กำลังตรวจ" : "หยุดอยู่"}
             </Text>
-        </View>
+          </View>
 
-        <View style={styles.fpsBadge}>
+          <View style={styles.fpsBadge}>
             <Text style={styles.fpsText}>FPS ~ 0.6-1.5 วิ/เฟรม</Text>
-        </View>
+          </View>
 
-        {isProcessing && (
+          <TouchableOpacity
+            onPress={toggleCameraFacing}
+            disabled={isRunning}
+            style={[styles.flipButton, { opacity: isRunning ? 0.5 : 1 }]}
+          >
+            <Text style={styles.flipButtonText}>
+              {facing === "back" ? "🔄 กล้องหน้า" : "🔄 กล้องหลัง"}
+            </Text>
+          </TouchableOpacity>
+
+          {isProcessing && (
             <View style={styles.processingBox}>
-                <Text style={styles.processingText}>กำลังวิเคราะห์เฟรมล่าสุด...</Text>
+              <Text style={styles.processingText}>กำลังวิเคราะห์เฟรมล่าสุด...</Text>
             </View>
-        )}
-
-        <View style={styles.miniPreviewWrap}>
-            <View style={styles.miniCard}>
-            <Text style={styles.miniTitle}>เฟรมล่าสุด</Text>
-            {latestFrameUri ? (
-                <Image source={{ uri: latestFrameUri }} style={styles.miniImage} />
-            ) : (
-                <View style={styles.miniPlaceholder}>
-                    <Text style={styles.miniPlaceholderText}>ยังไม่มี</Text>
-                </View>
-            )}
-            </View>
-
-            <View style={styles.miniCard}>
-                <Text style={styles.miniTitle}>Backend</Text>
-            {annotatedUrl ? (
-                <Image source={{ uri: annotatedUrl }} style={styles.miniImage} />
-            ) : (
-                <View style={styles.miniPlaceholder}>
-                    <Text style={styles.miniPlaceholderText}>ยังไม่มี</Text>
-                </View>
-            )}
-            </View>
+          )}
         </View>
+
+        <View style={styles.quickActionRow}>
+          <View style={styles.backendMiniCard}>
+            <Text style={styles.quickCardTitle}>🖼 Backend</Text>
+
+            {annotatedUrl ? (
+              <Image
+                source={{ uri: annotatedUrl }}
+                style={styles.backendMiniImage}
+                resizeMode="contain"
+              />
+            ) : (
+              <View style={styles.backendMiniPlaceholder}>
+                <Text style={styles.backendMiniPlaceholderText}>ยังไม่มีผล</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.latestMiniCard}>
+            <Text style={styles.quickCardTitle}>📊 ผลลัพธ์ล่าสุด</Text>
+
+            <View style={styles.latestTotalBox}>
+              <Text style={styles.latestTotalLabel}>ทั้งหมด</Text>
+              <Text style={styles.latestTotalNumber}>{total}</Text>
+              <Text style={styles.latestUnitText}>ลูก</Text>
+            </View>
+
+            <View style={styles.latestRipenessRow}>
+              <View style={styles.latestRipenessItem}>
+                <Text style={styles.latestGreenText}>ดิบ</Text>
+                <Text style={styles.latestGreenText}>{green}</Text>
+              </View>
+
+              <View style={styles.latestRipenessItem}>
+                <Text style={styles.latestBreakerText}>ห่าม</Text>
+                <Text style={styles.latestBreakerText}>{breaker}</Text>
+              </View>
+
+              <View style={styles.latestRipenessItem}>
+                <Text style={styles.latestRipeText}>สุก</Text>
+                <Text style={styles.latestRipeText}>{ripe}</Text>
+              </View>
+
+              <View style={styles.latestRipenessItem}>
+                <Text style={styles.latestOverripeText}>งอม</Text>
+                <Text style={styles.latestOverripeText}>{overripe}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.quickButtonColumn}>
+            <TouchableOpacity
+              onPress={startDetecting}
+              disabled={isRunning || !cameraReady}
+              style={[
+                styles.quickStartButton,
+                { opacity: isRunning || !cameraReady ? 0.55 : 1 },
+              ]}
+            >
+              <Text style={styles.quickButtonText}>▶ เริ่มตรวจ</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={stopDetecting}
+              disabled={!isRunning}
+              style={[
+                styles.quickStopButton,
+                { opacity: isRunning ? 1 : 0.45 },
+              ]}
+            >
+              <Text style={styles.quickButtonText}>■ หยุดตรวจ</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={saveCurrentImage}
+              style={styles.saveImageButton}
+            >
+              <Text style={styles.saveImageText}>💾 บันทึกภาพ</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.summaryPanel}>
-            <View style={styles.topStatsRow}>
+          <View style={styles.topStatsRow}>
             <View style={styles.statusBlock}>
-                <Text style={styles.statusIcon}>📷</Text>
-                <View>
+              <Text style={styles.statusIcon}>📷</Text>
+              <View>
                 <Text style={styles.statusLabel}>กล้อง</Text>
-                <Text style={styles.statusValue}>{cameraReady ? "พร้อม" : "กำลังโหลด"}</Text>
-            </View>
-            </View>
-
-            <View style={styles.statMini}>
-            <Text style={styles.statLabel}>เฟรม</Text>
-            <Text style={styles.statNumber}>{frameCount}</Text>
+                <Text style={styles.statusValue}>
+                  {cameraReady ? "พร้อม" : "กำลังโหลด"}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.statMini}>
-                <Text style={styles.statLabel}>เวลา</Text>
-                <Text style={styles.inferenceNumber}>{inferenceMs} ms</Text>
-            </View>
-        </View>
-
-        <View style={styles.resultBox}>
-            <Text style={styles.resultTitle}>📊 ผลลัพธ์ล่าสุด</Text>
-
-            <View style={styles.resultRow}>
-            <View style={styles.resultMain}>
-                <Text style={styles.resultLabel}>ทั้งหมด</Text>
-                <Text style={styles.totalNumber}>{total}</Text>
-                <Text style={styles.unitText}>ลูก</Text>
+              <Text style={styles.statLabel}>เฟรม</Text>
+              <Text style={styles.statNumber}>{frameCount}</Text>
             </View>
 
-            <View style={styles.ripenessCard}>
+            <View style={styles.statMini}>
+              <Text style={styles.statLabel}>เวลา</Text>
+              <Text style={styles.inferenceNumber}>{inferenceMs} ms</Text>
+            </View>
+          </View>
+
+          <View style={styles.resultBox}>
+            <Text style={styles.resultTitle}>สรุปผล</Text>
+
+            <View style={styles.resultTotalBox}>
+              <Text style={styles.resultLabel}>ทั้งหมด</Text>
+              <Text style={styles.totalNumber}>{total}</Text>
+              <Text style={styles.unitText}>ลูก</Text>
+            </View>
+
+            <View style={styles.ripenessGrid}>
+              <View style={styles.ripenessCard}>
                 <Text style={styles.greenLabel}>🍃 ดิบ</Text>
                 <Text style={styles.greenNumber}>{green}</Text>
                 <Text style={styles.unitText}>ลูก</Text>
-            </View>
+              </View>
 
-            <View style={styles.ripenessCard}>
+              <View style={styles.ripenessCard}>
                 <Text style={styles.breakerLabel}>🍌 ห่าม</Text>
                 <Text style={styles.breakerNumber}>{breaker}</Text>
                 <Text style={styles.unitText}>ลูก</Text>
-            </View>
+              </View>
 
-            <View style={styles.ripenessCard}>
+              <View style={styles.ripenessCard}>
                 <Text style={styles.ripeLabel}>🍌 สุก</Text>
                 <Text style={styles.ripeNumber}>{ripe}</Text>
                 <Text style={styles.unitText}>ลูก</Text>
-            </View>
-            </View>
-        </View>
+              </View>
 
-        <Text style={styles.smallStatus} numberOfLines={1}>
+              <View style={styles.ripenessCard}>
+                <Text style={styles.overripeLabel}>🍌 งอม</Text>
+                <Text style={styles.overripeNumber}>{overripe}</Text>
+                <Text style={styles.unitText}>ลูก</Text>
+              </View>
+            </View>
+          </View>
+
+          <Text style={styles.smallStatus} numberOfLines={1}>
             {backendStatus || captureStatus || "พร้อมเริ่มตรวจ"}
-        </Text>
+          </Text>
         </View>
-
-        <View style={styles.buttonRow}>
-        <TouchableOpacity
-            onPress={startDetecting}
-            disabled={isRunning || !cameraReady}
-            style={[
-            styles.startButton,
-            { opacity: isRunning || !cameraReady ? 0.55 : 1 },
-            ]}
-        >
-            <Text style={styles.actionButtonText}>▶ เริ่มตรวจ</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-            onPress={stopDetecting}
-            disabled={!isRunning}
-            style={[styles.stopButton, { opacity: isRunning ? 1 : 0.45 }]}
-        >
-            <Text style={styles.actionButtonText}>■ หยุดตรวจ</Text>
-        </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-        onPress={() => {
-            stopDetecting();
-            router.back();
-        }}
-        style={styles.backButton}
-        >
-        <Text style={styles.backText}>← กลับ</Text>
-        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
-    );
+  );
 }
 
 const styles = StyleSheet.create({
-    screen: {
-        flex: 1,
-        backgroundColor: "#f8fafc",
-        paddingHorizontal: 12,
-        paddingTop: 6,
-        paddingBottom: 8,
-    },
-    centerScreen: {
+screen: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+},
+
+scrollContent: {
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 18,
+},
+
+centerScreen: {
     flex: 1,
     backgroundColor: "#ffffff",
     justifyContent: "center",
     alignItems: "center",
     padding: 22,
     gap: 16,
-    },
-    permissionTitle: {
+},
+
+permissionTitle: {
     fontSize: 25,
     fontWeight: "900",
     textAlign: "center",
-    },
-    permissionText: {
+},
+
+permissionText: {
     fontSize: 16,
     color: "#64748b",
     textAlign: "center",
     lineHeight: 24,
-    },
-    allowButton: {
+},
+
+allowButton: {
     backgroundColor: "#22c55e",
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 16,
-    },
-    allowButtonText: {
+},
+
+allowButtonText: {
     color: "#fff",
     fontSize: 18,
     fontWeight: "900",
-    },
-    header: {
+},
+
+header: {
     alignItems: "center",
     marginBottom: 8,
-    },
-    title: {
+    minHeight: 82,
+    justifyContent: "center",
+},
+
+headerBackButton: {
+    position: "absolute",
+    left: 0,
+    top: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: "#e5e7eb",
+    zIndex: 10,
+},
+
+headerBackText: {
+    color: "#0f172a",
+    fontSize: 14,
+    fontWeight: "900",
+},
+
+title: {
     fontSize: 29,
     fontWeight: "900",
     color: "#0f172a",
-    },
-    subtitle: {
+},
+
+subtitle: {
     fontSize: 15,
     color: "#64748b",
     fontWeight: "700",
     marginTop: 2,
-    },
-    cameraPanel: {
-    flex: 1,
-    minHeight: 330,
+},
+
+cameraPanel: {
+    height: 250,
     borderRadius: 24,
     overflow: "hidden",
     backgroundColor: "#111827",
     position: "relative",
-    },
-    camera: {
+},
+
+camera: {
     flex: 1,
-    },
-    overlayLayer: {
+},
+
+overlayLayer: {
     position: "absolute",
     top: 0,
     left: 0,
-    },
-    box: {
+},
+
+box: {
     position: "absolute",
     borderWidth: 2,
     borderColor: "#f97316",
     backgroundColor: "transparent",
-    },
-    boxLabel: {
+},
+
+boxLabel: {
     position: "absolute",
     top: -24,
     left: 0,
@@ -581,26 +695,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 5,
-    },
-    boxLabelText: {
+},
+
+boxLabelText: {
     color: "#fff",
     fontSize: 11,
     fontWeight: "900",
-    },
-    liveBadge: {
+},
+
+liveBadge: {
     position: "absolute",
     top: 12,
     left: 12,
     paddingVertical: 8,
     paddingHorizontal: 13,
     borderRadius: 999,
-    },
-    liveBadgeText: {
+},
+
+liveBadgeText: {
     color: "#fff",
     fontWeight: "900",
     fontSize: 14,
-    },
-    fpsBadge: {
+},
+
+fpsBadge: {
     position: "absolute",
     top: 12,
     right: 12,
@@ -608,230 +726,395 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 999,
-    },
-    fpsText: {
+},
+
+fpsText: {
     color: "#fff",
     fontSize: 12,
     fontWeight: "800",
-    },
-    processingBox: {
+},
+
+flipButton: {
+    position: "absolute",
+    top: 56,
+    right: 12,
+    backgroundColor: "#00000099",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+},
+
+flipButtonText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "900",
+},
+
+processingBox: {
     position: "absolute",
     bottom: 12,
-    left: 90,
-    right: 90,
+    left: 70,
+    right: 70,
     backgroundColor: "#00000099",
     paddingVertical: 9,
     paddingHorizontal: 10,
     borderRadius: 14,
-    },
-    processingText: {
+},
+
+processingText: {
     color: "#fff",
     fontWeight: "800",
     textAlign: "center",
     fontSize: 13,
-    },
-    miniPreviewWrap: {
-    position: "absolute",
-    right: 10,
-    bottom: 10,
+},
+
+quickActionRow: {
+    flexDirection: "row",
     gap: 8,
-    },
-    miniCard: {
-    width: 112,
-    padding: 6,
-    borderRadius: 12,
-    backgroundColor: "#ffffffee",
-    },
-    miniTitle: {
-    fontSize: 11,
+    marginTop: 8,
+    alignItems: "stretch",
+},
+
+backendMiniCard: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+},
+
+latestMiniCard: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+},
+
+quickCardTitle: {
+    fontSize: 13,
     fontWeight: "900",
-    marginBottom: 4,
     color: "#111827",
-    },
-    miniImage: {
+    marginBottom: 6,
+},
+
+backendMiniImage: {
     width: "100%",
-    height: 72,
-    borderRadius: 8,
+    height: 92,
+    borderRadius: 10,
     backgroundColor: "#e5e7eb",
-    },
-    miniPlaceholder: {
+},
+
+backendMiniPlaceholder: {
     width: "100%",
-    height: 72,
-    borderRadius: 8,
+    height: 92,
+    borderRadius: 10,
     backgroundColor: "#e5e7eb",
     alignItems: "center",
     justifyContent: "center",
-    },
-    miniPlaceholderText: {
-    fontSize: 11,
+},
+
+backendMiniPlaceholderText: {
+    fontSize: 12,
     color: "#64748b",
     fontWeight: "800",
-    },
-    summaryPanel: {
+},
+
+latestTotalBox: {
+    height: 54,
+    borderRadius: 12,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#dbeafe",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+},
+
+latestTotalLabel: {
+    fontSize: 10,
+    color: "#64748b",
+    fontWeight: "800",
+},
+
+latestTotalNumber: {
+    fontSize: 24,
+    color: "#16a34a",
+    fontWeight: "900",
+},
+
+latestUnitText: {
+    fontSize: 10,
+    color: "#64748b",
+    fontWeight: "800",
+},
+
+latestRipenessRow: {
+    flexDirection: "row",
+    gap: 4,
+},
+
+latestRipenessItem: {
+    flex: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 4,
+},
+
+latestGreenText: {
+    fontSize: 10,
+    color: "#16a34a",
+    fontWeight: "900",
+},
+
+latestBreakerText: {
+    fontSize: 10,
+    color: "#ca8a04",
+    fontWeight: "900",
+},
+
+latestRipeText: {
+    fontSize: 10,
+    color: "#ea580c",
+    fontWeight: "900",
+},
+
+latestOverripeText: {
+    fontSize: 10,
+    color: "#dc2626",
+    fontWeight: "900",
+},
+
+quickButtonColumn: {
+    width: 126,
+    gap: 8,
+},
+
+quickStartButton: {
+    minHeight: 46,
+    backgroundColor: "#22c55e",
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+},
+
+quickStopButton: {
+    minHeight: 46,
+    backgroundColor: "#ef4444",
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+},
+
+quickButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "900",
+},
+
+saveImageButton: {
+    minHeight: 42,
+    borderRadius: 15,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    alignItems: "center",
+    justifyContent: "center",
+},
+
+saveImageText: {
+    color: "#0f172a",
+    fontSize: 13,
+    fontWeight: "900",
+},
+
+summaryPanel: {
     backgroundColor: "#ffffff",
     borderRadius: 22,
     padding: 12,
     marginTop: 10,
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    },
-    topStatsRow: {
+},
+
+topStatsRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 10,
-    },
-    statusBlock: {
+},
+
+statusBlock: {
     flex: 1.2,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    },
-    statusIcon: {
+},
+
+statusIcon: {
     fontSize: 26,
-    },
-    statusLabel: {
+},
+
+statusLabel: {
     fontSize: 12,
     color: "#64748b",
     fontWeight: "800",
-    },
-    statusValue: {
+},
+
+statusValue: {
     fontSize: 16,
     fontWeight: "900",
     color: "#0f172a",
-    },
-    statMini: {
+},
+
+statMini: {
     flex: 1,
     alignItems: "center",
     borderLeftWidth: 1,
     borderLeftColor: "#e5e7eb",
-    },
-    statLabel: {
+},
+
+statLabel: {
     fontSize: 12,
     color: "#64748b",
     fontWeight: "800",
-    },
-    statNumber: {
+},
+
+statNumber: {
     fontSize: 24,
     color: "#111827",
     fontWeight: "900",
-    },
-    inferenceNumber: {
+},
+
+inferenceNumber: {
     fontSize: 18,
     color: "#2563eb",
     fontWeight: "900",
-    },
-    resultBox: {
+},
+
+resultBox: {
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "#e5e7eb",
     padding: 10,
-    },
-    resultTitle: {
-    fontSize: 18,
+},
+
+resultTitle: {
+    fontSize: 17,
     fontWeight: "900",
     marginBottom: 8,
     color: "#111827",
-    },
-    resultRow: {
-    flexDirection: "row",
-    gap: 8,
-    },
-    resultMain: {
-    flex: 1.1,
+},
+
+resultTotalBox: {
+    borderRadius: 14,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    alignItems: "center",
     justifyContent: "center",
-    },
-    resultLabel: {
+    paddingVertical: 8,
+    marginBottom: 8,
+},
+
+resultLabel: {
     fontSize: 12,
     color: "#475569",
     fontWeight: "900",
-    },
-    totalNumber: {
-    fontSize: 34,
+},
+
+totalNumber: {
+    fontSize: 32,
     color: "#16a34a",
     fontWeight: "900",
-    },
-    unitText: {
+},
+
+unitText: {
     fontSize: 11,
     color: "#475569",
     fontWeight: "800",
-    },
-    ripenessCard: {
-    flex: 1,
+},
+
+ripenessGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+},
+
+ripenessCard: {
+    width: "23%",
+    height: 88,
     borderWidth: 1,
     borderColor: "#e5e7eb",
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 6,
-    },
-    greenLabel: {
+},
+
+greenLabel: {
     fontSize: 12,
     fontWeight: "900",
     color: "#15803d",
-    },
-    breakerLabel: {
+},
+
+breakerLabel: {
     fontSize: 12,
     fontWeight: "900",
     color: "#ca8a04",
-    },
-    ripeLabel: {
+},
+
+ripeLabel: {
     fontSize: 12,
     fontWeight: "900",
     color: "#ea580c",
-    },
-    greenNumber: {
-    fontSize: 28,
+},
+
+overripeLabel: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#dc2626",
+},
+
+greenNumber: {
+    fontSize: 27,
     fontWeight: "900",
     color: "#16a34a",
-    },
-    breakerNumber: {
-    fontSize: 28,
+},
+
+breakerNumber: {
+    fontSize: 27,
     fontWeight: "900",
     color: "#eab308",
-    },
-    ripeNumber: {
-    fontSize: 28,
+},
+
+ripeNumber: {
+    fontSize: 27,
     fontWeight: "900",
     color: "#f97316",
-    },
-    smallStatus: {
-    marginTop: 7,
+},
+
+overripeNumber: {
+    fontSize: 27,
+    fontWeight: "900",
+    color: "#dc2626",
+},
+
+smallStatus: {
+    marginTop: 8,
     color: "#64748b",
     fontSize: 12,
     fontWeight: "800",
-    },
-    buttonRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 10,
-    },
-    startButton: {
-    flex: 1,
-    backgroundColor: "#22c55e",
-    paddingVertical: 14,
-    borderRadius: 18,
-    alignItems: "center",
-    },
-    stopButton: {
-    flex: 1,
-    backgroundColor: "#ef4444",
-    paddingVertical: 14,
-    borderRadius: 18,
-    alignItems: "center",
-    },
-    actionButtonText: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "900",
-    },
-    backButton: {
-    alignItems: "center",
-    paddingTop: 10,
-    paddingBottom: 4,
-    },
-    backText: {
+    textAlign: "center",
+},
+
+backText: {
     color: "#2563eb",
     fontSize: 18,
     fontWeight: "900",
-    },
+},
 });

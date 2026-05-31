@@ -21,7 +21,7 @@ RESULT_DIR = "results"
 
 # ใช้โมเดลจาก backend/models/
 DETECT_MODEL_PATH = os.getenv("DETECT_MODEL_PATH", "models/banana_finger_detect.pt")
-CLS_MODEL_PATH = os.getenv("CLS_MODEL_PATH", "models/banana_ripeness_cls.pt")
+CLS_MODEL_PATH = os.getenv("CLS_MODEL_PATH", "models/banana_ripeness_cls_4cls.pt")
 
 DEFAULT_CONF = float(os.getenv("CONF", "0.25"))
 
