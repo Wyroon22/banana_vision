@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.ai.infer import YOLOService
 from app.utils.io import save_upload_bytes, load_image_bgr, ensure_dir
+from app.services.scan_service import save_scan_result_to_supabase
 
 APP_NAME = "BananaVision Backend"
 
@@ -163,11 +164,52 @@ async def detect(file: UploadFile = File(...), conf: Optional[float] = None):
         if not isinstance(detections, list):
             detections = []
 
-        summary = result.get("summary", {
-            "green": 0,
-            "breaker": 0,
-            "ripe": 0,
-        })
+        summary = result.get(
+            "summary",
+            {
+                "green": 0,
+                "breaker": 0,
+                "ripe": 0,
+                "overripe": 0,
+            },
+        )
+
+        # กัน key หาย
+        summary.setdefault("green", 0)
+        summary.setdefault("breaker", 0)
+        summary.setdefault("ripe", 0)
+        summary.setdefault("overripe", 0)
+        summary.setdefault("total", len(detections))
+
+        # ==============================
+        # Save to Supabase
+        # ==============================
+        scan_id = None
+        supabase_original_url = None
+        supabase_result_url = None
+        supabase_saved = False
+        supabase_error = None
+
+        try:
+            saved_scan = save_scan_result_to_supabase(
+                original_path=saved_path,
+                result_path=result_path,
+                detections=detections,
+                summary=summary,
+                inference_ms=dt_ms,
+                user_id=None,       # ตอนนี้ยังไม่มี Login/Register
+                guest_id="guest",   # ใช้ Guest ไปก่อน
+            )
+
+            scan_id = saved_scan.get("scan_id")
+            supabase_original_url = saved_scan.get("original_image_url")
+            supabase_result_url = saved_scan.get("result_image_url")
+            supabase_saved = True
+
+        except Exception as e:
+            # ไม่ให้ detect พัง ถ้า Supabase มีปัญหา
+            supabase_error = str(e)
+            print("[supabase] save scan failed:", repr(e))
 
         return {
             "ok": True,
@@ -187,6 +229,13 @@ async def detect(file: UploadFile = File(...), conf: Optional[float] = None):
             "total_detections": len(detections),
             "summary": summary,
             "detections": detections,
+
+            # Supabase
+            "scan_id": scan_id,
+            "supabase_saved": supabase_saved,
+            "supabase_error": supabase_error,
+            "supabase_original_url": supabase_original_url,
+            "supabase_result_url": supabase_result_url,
 
             # ข้อมูลเสริมจาก infer.py
             "image_width": result.get("image_width"),
