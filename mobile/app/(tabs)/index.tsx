@@ -272,7 +272,7 @@ export default function HomeScreen() {
           style={{
             backgroundColor: "#FFF8E6",
             borderRadius: 18,
-            padding: 18,
+            padding: 16,
             borderWidth: 1,
             borderColor: "#FDE68A",
             alignItems: "center",
@@ -281,10 +281,10 @@ export default function HomeScreen() {
           <Text
             style={{
               color: "#3B2A10",
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: "900",
               textAlign: "center",
-              lineHeight: 30,
+              lineHeight: 28,
             }}
           >
             🍌 ถ่ายรูป/เลือกรูป → Detect →{"\n"}ดูผลความสุกของกล้วยรายลูก
@@ -376,7 +376,7 @@ export default function HomeScreen() {
             style={{
               backgroundColor: "#111827",
               borderRadius: 20,
-              paddingVertical: 20,
+              paddingVertical: 18,
               alignItems: "center",
             }}
           >
@@ -385,6 +385,30 @@ export default function HomeScreen() {
             </Text>
           </Pressable>
         </View>
+
+        <View
+  style={{
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  }}
+>
+  <Text style={{ fontWeight: "800", color: "#374151" }}>
+    🏷️ Guide:
+  </Text>
+
+  <Text style={{ color: "#15803D", fontWeight: "800" }}>Green=ดิบ</Text>
+  <Text style={{ color: "#B45309", fontWeight: "800" }}>• Breaker=ห่าม</Text>
+  <Text style={{ color: "#C2410C", fontWeight: "800" }}>• Ripe=สุก</Text>
+  <Text style={{ color: "#DC2626", fontWeight: "800" }}>• Overripe=งอม</Text>
+</View>
 
         {!!statusText && (
           <View
