@@ -66,3 +66,7 @@ mobile/web-build/
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+
+*.png
+*.jpg
+*.webp

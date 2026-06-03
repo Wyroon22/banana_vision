@@ -234,7 +234,7 @@ export default function HomeScreen() {
 
           <View style={{ flexDirection: "row", gap: 8 }}>
             <Pressable
-              onPress={() => alert("กำลังพัฒนาหน้า Login")}
+              onPress={() => router.push("/login" as any)}
               style={{
                 paddingVertical: 8,
                 paddingHorizontal: 12,
@@ -256,7 +256,7 @@ export default function HomeScreen() {
             </Pressable>
 
             <Pressable
-              onPress={() => alert("กำลังพัฒนาหน้า Register")}
+              onPress={() => router.push("/register" as any)}
               style={{
                 paddingVertical: 8,
                 paddingHorizontal: 12,
