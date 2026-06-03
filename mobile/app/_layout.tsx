@@ -15,8 +15,39 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        {/* หน้า Tabs หลัก */}
+        <Stack.Screen
+          name="(tabs)"
+          options={{
+            headerShown: false,
+          }}
+        />
 
+        {/* [AUTH] ปิด header ดำของหน้า Login */}
+        <Stack.Screen
+          name="login"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        {/* [AUTH] ปิด header ดำของหน้า Register */}
+        <Stack.Screen
+          name="register"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        {/* [AUTH] ปิด header ดำของหน้า Forgot Password */}
+        <Stack.Screen
+          name="forgot-password"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        {/* หน้า Video Detect */}
         <Stack.Screen
           name="video-detect"
           options={{
