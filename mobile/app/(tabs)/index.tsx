@@ -1,8 +1,11 @@
-import { View, Text, Image, Pressable, ScrollView, SafeAreaView } from "react-native";
+import { View, Text, Image, Pressable, ScrollView, SafeAreaView, KeyboardAvoidingView, Platform } from "react-native";
 import { useMemo, useState } from "react";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
+
+// [STEP 9] เพิ่ม Component สำหรับให้คะแนนดาว + ส่ง Feedback หลัง Detect สำเร็จ
+import FeedbackCard from "../../components/FeedbackCard";
 
 
 const API_BASE = "http://172.20.10.2:8000";
@@ -180,12 +183,19 @@ export default function HomeScreen() {
 
   return (
   <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFDF7" }}>
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={90}
+  >
     <ScrollView
       style={{ flex: 1 }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       contentContainerStyle={{
         paddingHorizontal: 18,
         paddingTop: 46,
-        paddingBottom: 36,
+        paddingBottom: 140, // [STEP 9.5] เพิ่มพื้นที่ล่างกันคีย์บอร์ดบัง
       }}
     >
       <View style={{ gap: 14 }}>
@@ -542,6 +552,26 @@ export default function HomeScreen() {
           </View>
         )}
 
+    {/* [STEP 9] กล่องให้คะแนนดาว + Feedback
+    จะแสดงเฉพาะหลัง Detect สำเร็จและ Backend คืน scan_id มาแล้ว
+    scan_id ใช้ผูก Feedback กับผลตรวจครั้งนั้น */}
+    <FeedbackCard
+      apiBase={API_BASE}
+      scanId={result?.scan_id}
+    />
+
+  <Pressable onPress={() => setShowDebug((v) => !v)}>
+    <Text
+      style={{
+        textDecorationLine: "underline",
+        color: "#0066CC",
+        fontWeight: "700",
+      }}
+  >
+        {showDebug ? "ซ่อนรายละเอียด (Debug)" : "ดูรายละเอียด (Debug)"}
+    </Text>
+  </Pressable>
+
         <Pressable onPress={() => setShowDebug((v) => !v)}>
           <Text
             style={{
@@ -550,7 +580,7 @@ export default function HomeScreen() {
               fontWeight: "700",
             }}
           >
-            {showDebug ? "ซ่อนรายละเอียด (Debug)" : "ดูรายละเอียด (Debug)"}
+            
           </Text>
         </Pressable>
 
@@ -569,6 +599,7 @@ export default function HomeScreen() {
         )}
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

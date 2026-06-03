@@ -11,9 +11,15 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+# [STEP 9] เพิ่ม BaseModel, Field สำหรับรับข้อมูล Feedback แบบ JSON
+from pydantic import BaseModel, Field
+
 from app.ai.infer import YOLOService
 from app.utils.io import save_upload_bytes, load_image_bgr, ensure_dir
 from app.services.scan_service import save_scan_result_to_supabase
+
+# [STEP 9] เพิ่ม supabase client เพื่อบันทึก Feedback ลงตาราง feedback
+from app.supabase_client import supabase
 
 APP_NAME = "BananaVision Backend"
 
@@ -46,6 +52,16 @@ app.add_middleware(
 )
 
 yolo_service: Optional[YOLOService] = None
+
+
+# [STEP 9] Model สำหรับรับ Feedback จาก Mobile
+# ใช้กับ Guest ก่อน เพราะตอนนี้ยังไม่มี Login/Register
+class FeedbackRequest(BaseModel):
+    scan_id: str = Field(..., min_length=1)
+    guest_id: Optional[str] = "guest"
+    rating: int = Field(..., ge=1, le=5)
+    is_correct: Optional[bool] = None
+    comment: Optional[str] = None
 
 
 @app.on_event("startup")
@@ -243,6 +259,40 @@ async def detect(file: UploadFile = File(...), conf: Optional[float] = None):
         }
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# [STEP 9] Endpoint สำหรับรับคะแนนดาว + ความคิดเห็นจาก Guest/Member
+# ตอนนี้ใช้ Guest ก่อน เพราะยังไม่มี Login/Register
+@app.post("/feedback")
+def submit_feedback(payload: FeedbackRequest):
+    try:
+        feedback_row = {
+            "user_id": None,  # ยังไม่มี Login/Register จึงยังไม่ผูก user_id
+            "guest_id": payload.guest_id or "guest",
+            "scan_id": payload.scan_id,
+            "rating": payload.rating,
+            "is_correct": payload.is_correct,
+            "comment": payload.comment.strip() if payload.comment else None,
+        }
+
+        response = (
+            supabase.table("feedback")
+            .insert(feedback_row)
+            .execute()
+        )
+
+        if not response.data:
+            raise RuntimeError("Cannot insert feedback")
+
+        return {
+            "ok": True,
+            "feedback_id": response.data[0]["id"],
+            "message": "Feedback saved successfully",
+        }
+
+    except Exception as e:
+        print("[feedback] save failed:", repr(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
