@@ -15,6 +15,9 @@ import {
   StatusBar
 } from 'react-native';
 
+// [STEP 3.4] import Supabase client ที่สร้างไว้ใน mobile/lib/supabase.js
+import { supabase } from "../lib/supabase";
+
 const COLORS = {
   bg: '#FBF7E3',
   bg_white: '#FFFFFF',
@@ -33,31 +36,83 @@ const eyeIcon = require('../assets/auth/eye.png');
 const backIcon = require('../assets/auth/back.png');
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState('');
+  // [STEP 3.4] เปลี่ยนจาก username เป็น email
+  // เพราะ Supabase Auth ใช้ email + password เป็นหลัก
+  const [email, setEmail] = useState('');
+
   const [password, setPassword] = useState('');
   const [secureText, setSecureText] = useState(true);
+
+  // [STEP 3.4] เพิ่ม loading กันกด Login ซ้ำ
+  const [loading, setLoading] = useState(false);
 
   const passwordRef = useRef();
 
   // [AUTH BACK] ฟังก์ชันย้อนกลับ
   // ถ้ามีหน้าก่อนหน้าให้ย้อนกลับ ถ้าไม่มีให้กลับหน้า Home
   const handleBack = () => {
-    if (router.canGoBack()) {
+    if (router.canGoBack && router.canGoBack()) {
       router.back();
     } else {
       router.replace("/");
     }
   };
 
-  const handleLogin = () => {
-    if (!username.trim() || !password.trim()) {
-      Alert.alert("แจ้งเตือน", "กรุณากรอก Username และ Password");
+  // [STEP 3.4] Login จริงผ่าน Supabase Auth
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("แจ้งเตือน", "กรุณากรอก Email และ Password");
       return;
     }
 
-    // [AUTH] ตอนนี้ยังเป็น demo login ก่อน
-    // หลังเชื่อม Supabase Auth จริง ค่อยเปลี่ยนตรงนี้เป็น signInWithPassword()
-    router.replace("/");
+    const cleanEmail = email.trim().toLowerCase();
+
+    const emailRegex = /\S+@\S+\.\S+/;
+    if (!emailRegex.test(cleanEmail)) {
+      Alert.alert("ข้อผิดพลาด", "รูปแบบอีเมลไม่ถูกต้อง");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // [STEP 3.4] ยิง Login จริงเข้า Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      // [STEP 3.4] ถ้า Login สำเร็จ จะได้ user/session กลับมา
+      if (!data?.user) {
+        Alert.alert("เข้าสู่ระบบไม่สำเร็จ", "ไม่พบข้อมูลผู้ใช้");
+        return;
+      }
+
+      Alert.alert(
+        "เข้าสู่ระบบสำเร็จ",
+        `ยินดีต้อนรับ\n${data.user.email}`,
+        [
+          {
+            text: "ตกลง",
+
+            // [STEP 3.4] Login สำเร็จ กลับหน้า Home
+            // Step 4 ค่อยทำให้ Home เปลี่ยนเป็นโหมด Member + ปุ่ม Logout
+            onPress: () => router.replace("/"),
+          },
+        ]
+      );
+    } catch (err) {
+      Alert.alert(
+        "เข้าสู่ระบบไม่สำเร็จ",
+        err?.message || "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -87,15 +142,19 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>USERNAME</Text>
+            {/* [STEP 3.4] เปลี่ยนจาก USERNAME เป็น EMAIL */}
+            <Text style={styles.inputLabel}>EMAIL</Text>
+
             <View style={styles.inputFieldContainer}>
               <TextInput
                 style={styles.inputText}
-                placeholder="YOUR USERNAME"
+                placeholder="YOUR EMAIL"
                 placeholderTextColor={COLORS.text_gray}
-                value={username}
-                onChangeText={setUsername}
+                value={email}
+                onChangeText={setEmail}
                 autoCapitalize="none"
+                keyboardType="email-address"
+                textContentType="emailAddress"
                 returnKeyType="next"
                 onSubmitEditing={() => passwordRef.current?.focus()}
                 blurOnSubmit={false}
@@ -103,6 +162,7 @@ export default function LoginScreen() {
             </View>
 
             <Text style={styles.inputLabel}>PASSWORD</Text>
+
             <View style={styles.inputFieldContainer}>
               <TextInput
                 ref={passwordRef}
@@ -113,6 +173,7 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
                 secureTextEntry={secureText}
                 autoCapitalize="none"
+                textContentType="password"
                 returnKeyType="go"
                 onSubmitEditing={handleLogin}
               />
@@ -140,11 +201,19 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.loginBtn}
+            style={[
+              styles.loginBtn,
+
+              // [STEP 3.4] ตอนกำลัง Login ให้ปุ่มจางลง
+              loading && styles.disabledButton,
+            ]}
             onPress={handleLogin}
             activeOpacity={0.8}
+            disabled={loading}
           >
-            <Text style={styles.loginBtnText}>LOGIN</Text>
+            <Text style={styles.loginBtnText}>
+              {loading ? "LOGGING IN..." : "LOGIN"}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -283,6 +352,11 @@ const styles = StyleSheet.create({
     shadowColor: COLORS.green,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
+  },
+
+  // [STEP 3.4] ปุ่มตอนกำลัง Login
+  disabledButton: {
+    opacity: 0.6,
   },
 
   loginBtnText: {
