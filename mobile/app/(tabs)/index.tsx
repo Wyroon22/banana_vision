@@ -1,6 +1,8 @@
-import { View, Text, Image, Pressable, ScrollView, SafeAreaView, KeyboardAvoidingView, Platform } from "react-native";
-import { useMemo, useState } from "react";
+import { View, Text, Image, Pressable, ScrollView, SafeAreaView, KeyboardAvoidingView, Platform, Alert } from "react-native";
+import { useEffect, useMemo, useState } from "react";
 import { router } from "expo-router";
+// [STEP 4.1] import Supabase client เพื่ออ่าน session/login state
+import { supabase } from "../../lib/supabase";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 
@@ -14,11 +16,77 @@ const TARGET_WIDTH = 1280; // ✅ resize กันไฟล์ใหญ่เก
 export default function HomeScreen() {
   const [image, setImage] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
+  // [STEP 4.1] เก็บ user ที่ login อยู่
+  const [user, setUser] = useState<any>(null);
+
+  // [STEP 4.1] ใช้บอกว่ากำลังเช็ก session อยู่ไหม
+  const [authLoading, setAuthLoading] = useState(true);
   const [annotatedUrl, setAnnotatedUrl] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [showDebug, setShowDebug] = useState(false);
+
+  // [STEP 4.1] เช็กว่า user login อยู่ไหม ตอนเปิดหน้า Home
+useEffect(() => {
+  let mounted = true;
+
+  const loadSession = async () => {
+    try {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.log("[auth] getSession error:", error.message);
+      }
+
+      if (mounted) {
+        setUser(data?.session?.user ?? null);
+        setAuthLoading(false);
+      }
+    } catch (err) {
+      console.log("[auth] getSession failed:", err);
+
+      if (mounted) {
+        setUser(null);
+        setAuthLoading(false);
+      }
+    }
+  };
+
+  loadSession();
+
+  // [STEP 4.1] ฟัง event เวลา login/logout/session เปลี่ยน
+  const { data: authListener } = supabase.auth.onAuthStateChange(
+    (_event, session) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    }
+  );
+
+  return () => {
+    mounted = false;
+    authListener?.subscription?.unsubscribe();
+  };
+  }, []);
+
+  // [STEP 4.2] Logout ออกจาก Supabase แล้วเคลียร์ user ในหน้า Home
+  const handleLogout = async () => {
+  try {
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      throw error;
+    }
+
+    setUser(null);
+    router.replace("/");
+  } catch (err: any) {
+    Alert.alert(
+      "Logout ไม่สำเร็จ",
+      err?.message || "เกิดข้อผิดพลาดระหว่างออกจากระบบ"
+    );
+  }
+};
 
   const summary = useMemo(() => {
     if (!result?.ok) return null;
@@ -208,76 +276,148 @@ export default function HomeScreen() {
             gap: 10,
           }}
         >
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{
-                fontSize: 30,
-                fontWeight: "900",
-                color: "#111827",
-              }}
-              numberOfLines={1}
-            >
-              🍌 BVision
+      <View style={{ flexShrink: 1, maxWidth: user ? 130 : 220 }}>
+        <Text
+          style={{
+            // [STEP 4.3] ลดขนาดตัวอักษร เพื่อไม่ให้ชน Member/Logout
+            fontSize: user ? 24 : 30,
+            fontWeight: "900",
+            color: "#111827",
+          }}
+          numberOfLines={1}
+        >
+          🍌 BVision
+        </Text>
+
+        <Text
+          style={{
+            color: "#6B7280",
+            marginTop: 4,
+            // [STEP 4.3] ตอนเป็น Member ลด subtitle ไม่ให้กินพื้นที่
+            fontSize: user ? 12 : 14,
+            fontWeight: "700",
+        }}
+        numberOfLines={user ? 2 : 1}
+      >
+        AI ตรวจความสุกของกล้วย
+        </Text>
+      </View>
+
+          {/* [STEP 4.2] ขวาบน: ถ้า Login แล้ว แสดง Member + Logout / ถ้ายังไม่ Login แสดง Login + Register */}
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          {authLoading ? (
+            <Text style={{ color: "#6B7280", fontWeight: "800" }}>
+              Checking...
             </Text>
+      ) : user ? (
+    <>
+      <View
+        style={{
+           // [STEP 4.3] ลดขนาดกล่อง Member ไม่ให้เบียดชื่อแอป
+          maxWidth: 135,
+          paddingVertical: 7,
+          paddingHorizontal: 10,
+          borderRadius: 999,
+          backgroundColor: "#ECFDF5",
+          borderWidth: 1,
+          borderColor: "#22C55E",
+        }}
+      >
+        <Text
+          numberOfLines={1}
+          style={{
+            color: "#166534",
+            fontWeight: "900",
+            fontSize: 12,
+          }}
+        >
+          Member
+        </Text>
 
-            <Text
-              style={{
-                color: "#6B7280",
-                marginTop: 4,
-                fontSize: 14,
-                fontWeight: "700",
-              }}
+        <Text
+          numberOfLines={1}
+          style={{
+            color: "#166534",
+            fontWeight: "700",
+            fontSize: 10,
+          }}
+        >
+          {user.email}
+        </Text>
+      </View>
+
+      <Pressable
+        // [STEP 4.2] กดแล้วออกจากระบบ
+        onPress={handleLogout}
+        style={{
+          // [STEP 4.3] ลดขนาดปุ่ม Logout ให้ Header สมดุล
+          paddingVertical: 8,
+          paddingHorizontal: 10,
+          borderRadius: 999,
+          backgroundColor: "#EF4444",
+        }}
+      >
+        <Text
+          style={{
+            color: "#FFFFFF",
+            fontWeight: "900",
+            fontSize: 13,
+          }}
+        >
+          Logout
+        </Text>
+      </Pressable>
+    </>
+    ) : (
+    <>
+      <Pressable
+        onPress={() => router.push("/login" as any)}
+        style={{
+          paddingVertical: 8,
+          paddingHorizontal: 12,
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: "#007AFF",
+          backgroundColor: "#FFFFFF",
+        }}
+      >
+        <Text
+          style={{
+            color: "#007AFF",
+            fontWeight: "900",
+            fontSize: 13,
+          }}
+        >
+          Login
+        </Text>
+      </Pressable>
+
+      <Pressable
+        onPress={() => router.push("/register" as any)}
+        style={{
+          paddingVertical: 8,
+          paddingHorizontal: 12,
+          borderRadius: 999,
+          backgroundColor: "#007AFF",
+        }}
+      >
+        <Text
+          style={{
+            color: "#FFFFFF",
+            fontWeight: "900",
+            fontSize: 13,
+          }}
             >
-              AI ตรวจความสุกของกล้วย
+              Register
             </Text>
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Pressable
-              onPress={() => router.push("/login" as any)}
-              style={{
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: "#007AFF",
-                backgroundColor: "#FFFFFF",
-              }}
-            >
-              <Text
-                style={{
-                  color: "#007AFF",
-                  fontWeight: "900",
-                  fontSize: 13,
-                }}
-              >
-                Login
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push("/register" as any)}
-              style={{
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-                borderRadius: 999,
-                backgroundColor: "#007AFF",
-              }}
-            >
-              <Text
-                style={{
-                  color: "#FFFFFF",
-                  fontWeight: "900",
-                  fontSize: 13,
-                }}
-              >
-                Register
-              </Text>
-            </Pressable>
-          </View>
+        </Pressable>
+          </>
+        )}
+        </View>
         </View>
 
         {/* Guide Card */}
+
         <View
           style={{
             backgroundColor: "#FFF8E6",
