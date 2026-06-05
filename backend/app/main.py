@@ -7,7 +7,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -55,9 +55,13 @@ yolo_service: Optional[YOLOService] = None
 
 
 # [STEP 9] Model สำหรับรับ Feedback จาก Mobile
-# ใช้กับ Guest ก่อน เพราะตอนนี้ยังไม่มี Login/Register
+# Step 5.5 ค่อยเพิ่ม user_id ให้ Feedback
 class FeedbackRequest(BaseModel):
     scan_id: str = Field(..., min_length=1)
+    # [STEP 5.5] ถ้า Login อยู่ Mobile จะส่ง user_id มา
+    user_id: Optional[str] = None
+
+    # [STEP 5.5] ถ้าเป็น Guest จะส่ง guest_id = "guest"
     guest_id: Optional[str] = "guest"
     rating: int = Field(..., ge=1, le=5)
     is_correct: Optional[bool] = None
@@ -102,7 +106,16 @@ def health():
 
 
 @app.post("/detect")
-async def detect(file: UploadFile = File(...), conf: Optional[float] = None):
+async def detect(
+    file: UploadFile = File(...),
+    conf: Optional[float] = None,
+
+    # [STEP 5.2] รับ user_id / guest_id จาก Mobile FormData
+    # ถ้า Login แล้ว Mobile จะส่ง user_id มา
+    # ถ้าเป็น Guest จะส่ง guest_id = "guest" มา
+    user_id: Optional[str] = Form(None),
+    guest_id: Optional[str] = Form(None),
+):
     global yolo_service
 
     if yolo_service is None:
@@ -122,6 +135,13 @@ async def detect(file: UploadFile = File(...), conf: Optional[float] = None):
         "filename:", file.filename,
         "content_type:", file.content_type,
         "bytes:", len(image_bytes),
+    )
+
+    # [STEP 5.2] Debug ดูว่า Mobile ส่ง user_id / guest_id มาถึง Backend ไหม
+    print(
+        "[detect auth raw]",
+        "user_id:", user_id,
+        "guest_id:", guest_id,
     )
 
     if not image_bytes or len(image_bytes) < 1000:
@@ -206,6 +226,18 @@ async def detect(file: UploadFile = File(...), conf: Optional[float] = None):
         supabase_saved = False
         supabase_error = None
 
+        # [STEP 5.2] ตัดสินว่า scan นี้เป็นของ Member หรือ Guest
+        # ถ้ามี user_id = Member
+        # ถ้าไม่มี user_id = Guest
+        final_user_id = user_id.strip() if user_id else None
+        final_guest_id = None if final_user_id else (guest_id.strip() if guest_id else "guest")
+
+        print(
+            "[detect auth]",
+            "user_id:", final_user_id,
+            "guest_id:", final_guest_id,
+        )
+
         try:
             saved_scan = save_scan_result_to_supabase(
                 original_path=saved_path,
@@ -213,8 +245,10 @@ async def detect(file: UploadFile = File(...), conf: Optional[float] = None):
                 detections=detections,
                 summary=summary,
                 inference_ms=dt_ms,
-                user_id=None,       # ตอนนี้ยังไม่มี Login/Register
-                guest_id="guest",   # ใช้ Guest ไปก่อน
+
+                # [STEP 5.2] ส่ง user_id / guest_id จริงไปให้ scan_service บันทึกลง scan_history
+                user_id=final_user_id,
+                guest_id=final_guest_id,
             )
 
             scan_id = saved_scan.get("scan_id")
@@ -253,6 +287,10 @@ async def detect(file: UploadFile = File(...), conf: Optional[float] = None):
             "supabase_original_url": supabase_original_url,
             "supabase_result_url": supabase_result_url,
 
+            # [STEP 5.2] ส่งกลับไปให้ Mobile Debug ดูว่า Backend รับ owner ถูกไหม
+            "user_id": final_user_id,
+            "guest_id": final_guest_id,
+
             # ข้อมูลเสริมจาก infer.py
             "image_width": result.get("image_width"),
             "image_height": result.get("image_height"),
@@ -263,13 +301,30 @@ async def detect(file: UploadFile = File(...), conf: Optional[float] = None):
 
 
 # [STEP 9] Endpoint สำหรับรับคะแนนดาว + ความคิดเห็นจาก Guest/Member
-# ตอนนี้ใช้ Guest ก่อน เพราะยังไม่มี Login/Register
+# [STEP 5.5] รับ user_id จาก Mobile แล้วบันทึก feedback ให้ตรงเจ้าของ
 @app.post("/feedback")
 def submit_feedback(payload: FeedbackRequest):
     try:
+        # [STEP 5.5] ถ้ามี user_id = Member
+        # ถ้าไม่มี user_id = Guest
+        final_user_id = payload.user_id.strip() if payload.user_id else None
+        final_guest_id = None if final_user_id else (payload.guest_id or "guest")
+
+        print(
+            "[feedback auth]",
+            "scan_id:", payload.scan_id,
+            "user_id:", final_user_id,
+            "guest_id:", final_guest_id,
+        )
+
         feedback_row = {
-            "user_id": None,  # ยังไม่มี Login/Register จึงยังไม่ผูก user_id
-            "guest_id": payload.guest_id or "guest",
+            # [STEP 5.5] ถ้าเป็น Member จะบันทึก user_id จริง
+            "user_id": final_user_id,
+
+            # [STEP 5.5] ถ้าเป็น Member ให้ guest_id เป็น NULL
+            # ถ้าเป็น Guest ให้ guest_id = "guest"
+            "guest_id": final_guest_id,
+
             "scan_id": payload.scan_id,
             "rating": payload.rating,
             "is_correct": payload.is_correct,
@@ -289,6 +344,10 @@ def submit_feedback(payload: FeedbackRequest):
             "ok": True,
             "feedback_id": response.data[0]["id"],
             "message": "Feedback saved successfully",
+
+            # [STEP 5.5] ส่งกลับให้ Mobile/debug ดูว่า feedback ถูกผูกกับใคร
+            "user_id": final_user_id,
+            "guest_id": final_guest_id,
         }
 
     except Exception as e:

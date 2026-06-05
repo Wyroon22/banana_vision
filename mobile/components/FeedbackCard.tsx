@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Alert,
     Pressable,
@@ -11,12 +11,21 @@ import {
 type FeedbackCardProps = {
     apiBase: string;
     scanId?: string | null;
+
+    // [STEP 5.4] รับ userId จากหน้า Home / Video
+    // ถ้า Login อยู่ จะมี userId
+    // ถ้าเป็น Guest จะเป็น null
+    userId?: string | null;
+
     guestId?: string;
 };
 
 export default function FeedbackCard({
     apiBase,
     scanId,
+
+    // [STEP 5.4] รับ userId เข้ามา
+    userId = null,
     guestId = "guest",
 }: FeedbackCardProps) {
     const [rating, setRating] = useState(0);
@@ -24,6 +33,16 @@ export default function FeedbackCard({
     const [comment, setComment] = useState("");
     const [sending, setSending] = useState(false);
     const [sent, setSent] = useState(false);
+
+    // [STEP 5.4 FIX] ถ้า scanId / userId / guestId เปลี่ยน
+    // ให้ reset ฟอร์มใหม่ ไม่ให้ค้างว่า "ส่ง Feedback แล้ว"
+    useEffect(() => {
+        setRating(0);
+        setIsCorrect(null);
+        setComment("");
+        setSending(false);
+        setSent(false);
+}, [scanId, userId, guestId]);
 
   // [STEP 9.5] เพิ่มคำอธิบายระดับความพึงพอใจตามจำนวนดาว
     const ratingLabels: Record<number, string> = {
@@ -55,7 +74,12 @@ export default function FeedbackCard({
         },
         body: JSON.stringify({
             scan_id: scanId,
-            guest_id: guestId,
+
+            // [STEP 5.4] ถ้า Login อยู่ ส่ง user_id
+            // ถ้าไม่ได้ Login ส่ง guest_id เหมือนเดิม
+            user_id: userId || null,
+            guest_id: userId ? null : guestId,
+
             rating,
             is_correct: isCorrect,
             comment: comment.trim() || null,

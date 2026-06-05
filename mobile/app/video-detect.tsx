@@ -2,6 +2,8 @@ import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
+// [STEP 5.1] ใช้ Supabase เพื่อดึง user ที่ login อยู่
+import { supabase } from "../lib/supabase";
 
 import {
   Image,
@@ -69,6 +71,34 @@ export default function VideoDetectScreen() {
 
   const [detectResult, setDetectResult] = useState<any>(null);
   const [frameCount, setFrameCount] = useState(0);
+  // [STEP 5.1] เก็บ user ที่ login อยู่ เพื่อส่ง user_id ตอน detect video
+  const [user, setUser] = useState<any>(null);
+
+  // [STEP 5.1] เช็ก session ว่าตอนนี้เป็น Member หรือ Guest
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSession = async () => {
+      const { data } = await supabase.auth.getSession();
+
+    if (mounted) {
+      setUser(data?.session?.user ?? null);
+    }
+  };
+
+  loadSession();
+
+  const { data: authListener } = supabase.auth.onAuthStateChange(
+    (_event, session) => {
+      setUser(session?.user ?? null);
+    }
+  );
+
+  return () => {
+    mounted = false;
+    authListener?.subscription?.unsubscribe();
+  };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -223,12 +253,19 @@ export default function VideoDetectScreen() {
       setCaptureStatus("✅ จับภาพและเตรียมเฟรมสำเร็จ");
 
       const formData = new FormData();
-
       formData.append("file", {
         uri: prepared.uri,
         name: `video_frame_${Date.now()}.jpg`,
         type: "image/jpeg",
       } as any);
+
+      // [STEP 5.1] ส่ง user_id ถ้า Login อยู่
+      // ถ้าไม่ได้ Login ให้ส่ง guest_id เป็น guest
+      if (user?.id) {
+        formData.append("user_id", user.id);
+      } else {
+        formData.append("guest_id", "guest");
+      }
 
       const res = await fetch(`${API_BASE}/detect`, {
         method: "POST",
@@ -596,8 +633,16 @@ export default function VideoDetectScreen() {
               เพราะตอนกำลังรัน detectResult จะเปลี่ยนทุกเฟรม */}
           {detectResult?.scan_id && !isRunning && (
             <FeedbackCard
+            // [STEP 5.4 FIX] บังคับ reset component เมื่อ scan/user เปลี่ยน
+              key={`${detectResult?.scan_id ?? "no-scan"}-${user?.id ?? "guest"}`}
               apiBase={API_BASE}
               scanId={detectResult.scan_id}
+
+              // [STEP 5.4] ส่ง user_id ให้ FeedbackCard ถ้าเป็น Member
+              userId={user?.id ?? null}
+
+              // [STEP 5.4] ถ้าไม่มี user จะเป็น Guest
+              guestId="guest"
             />
           )}
 

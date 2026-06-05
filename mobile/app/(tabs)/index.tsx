@@ -58,9 +58,21 @@ useEffect(() => {
   // [STEP 4.1] ฟัง event เวลา login/logout/session เปลี่ยน
   const { data: authListener } = supabase.auth.onAuthStateChange(
     (_event, session) => {
-      setUser(session?.user ?? null);
+      const nextUser = session?.user ?? null;
+
+      // [STEP 5 FIX] ถ้า Auth state เปลี่ยน เช่น Login / Logout
+      // ให้เคลียร์รูป ผลตรวจ และ Debug เก่า
+      // กันข้อมูล Member ค้างไปโผล่ตอน Guest
+      setImage(null);
+      setResult(null);
+      setAnnotatedUrl(null);
+      setStatusText("");
+      setErrorMsg("");
+      setShowDebug(false);
+
+      setUser(nextUser);
       setAuthLoading(false);
-    }
+      }
   );
 
   return () => {
@@ -77,6 +89,9 @@ useEffect(() => {
     if (error) {
       throw error;
     }
+
+    // [STEP 5 FIX] เคลียร์รูป/ผลตรวจเก่าหลัง Logout
+    clearScanState();
 
     setUser(null);
     router.replace("/");
@@ -140,6 +155,17 @@ useEffect(() => {
     setStatusText("");
     setResult(null);
     setAnnotatedUrl(null);
+    setShowDebug(false);
+  };
+
+  // [STEP 5 FIX] เคลียร์ข้อมูล scan ทั้งหมดเมื่อเปลี่ยน user / logout
+  // กันรูปหรือผลตรวจของ Member ค้างไปโผล่ตอน Guest
+  const clearScanState = () => {
+    setImage(null);
+    setResult(null);
+    setAnnotatedUrl(null);
+    setStatusText("");
+    setErrorMsg("");
     setShowDebug(false);
   };
 
@@ -223,6 +249,14 @@ useEffect(() => {
         name: "banana.jpg",
         type: "image/jpeg",
       } as any);
+
+      // [STEP 5.1] ส่ง user_id ถ้า Login อยู่
+      // ถ้าไม่ได้ Login ให้ส่ง guest_id เป็น guest เหมือนเดิม
+      if (user?.id) {
+        formData.append("user_id", user.id);
+      } else {
+        formData.append("guest_id", "guest");
+      }
 
       const res = await fetch(`${API_BASE}/detect`, {
         method: "POST",
@@ -696,8 +730,17 @@ useEffect(() => {
     จะแสดงเฉพาะหลัง Detect สำเร็จและ Backend คืน scan_id มาแล้ว
     scan_id ใช้ผูก Feedback กับผลตรวจครั้งนั้น */}
     <FeedbackCard
+
+      // [STEP 5.4 FIX] บังคับให้ FeedbackCard สร้างใหม่เมื่อ scan/user เปลี่ยน
+      key={`${result?.scan_id ?? "no-scan"}-${user?.id ?? "guest"}`}
       apiBase={API_BASE}
       scanId={result?.scan_id}
+
+      // [STEP 5.4] ส่ง user id ให้ FeedbackCard ถ้า Login อยู่
+      userId={user?.id ?? null}
+
+      // [STEP 5.4] ถ้าไม่มี user จะถือเป็น guest
+      guestId="guest"
     />
 
   <Pressable onPress={() => setShowDebug((v) => !v)}>
