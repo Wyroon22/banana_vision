@@ -617,6 +617,31 @@ useEffect(() => {
               📹 ตรวจแบบวิดีโอ
             </Text>
           </Pressable>
+
+          {user && (
+          <Pressable
+            onPress={() => router.push("/history" as any)}
+            android_ripple={{ color: "#D1FAE5" }}
+            style={({ pressed }) => [
+          {
+            backgroundColor: "#ECFDF5",
+            borderRadius: 20,
+            paddingVertical: 18,
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: "#22C55E",
+          },
+            pressed && {
+              opacity: 0.8,
+              transform: [{ scale: 0.97 }],
+            },
+          ]}
+          >
+            <Text style={{ color: "#166534", fontSize: 22, fontWeight: "900" }}>
+              📜 ประวัติการตรวจ
+            </Text>
+          </Pressable>
+          )}
         </View>
 
         <View
