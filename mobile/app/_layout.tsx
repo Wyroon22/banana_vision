@@ -62,6 +62,13 @@ export default function RootLayout() {
             title: "Modal",
           }}
         />
+
+        <Stack.Screen
+          name="reset-password"
+          options={{
+            headerShown: false,
+          }}
+        />
       </Stack>
 
       <StatusBar style="light" />

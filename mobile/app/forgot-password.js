@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import { router } from "expo-router";
+import * as Linking from "expo-linking";
 import {
   StyleSheet,
   Text,
@@ -13,31 +14,54 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   Image,
-} from 'react-native';
+} from "react-native";
 
-// [STEP 3.5] import Supabase client ที่สร้างไว้ใน mobile/lib/supabase.js
 import { supabase } from "../lib/supabase";
 
 const COLORS = {
-  bg: '#FBF7E3',
-  bg_white: '#FFFFFF',
-  primary: '#4A3B32',
-  text_dark: '#000000',
-  text_gray: '#757575',
-  border: '#EFECE0',
-  red: '#E53935',
-  green: '#27AE60',
+  bg: "#FBF7E3",
+  bg_white: "#FFFFFF",
+  primary: "#4A3B32",
+  text_dark: "#000000",
+  text_gray: "#757575",
+  border: "#EFECE0",
+  red: "#E53935",
+  green: "#27AE60",
 };
 
-const backIcon = require('../assets/auth/back.png');
+const backIcon = require("../assets/auth/back.png");
+
+/**
+ * [RESET PASSWORD DEV URL]
+ * ใช้ URL จาก Terminal ตอน npm start
+ *
+ * ตอนนี้ Terminal ต้นขึ้นว่า:
+ * exp://172.20.10.2:8081/--/reset-password
+ *
+ * ถ้าเปิด Expo ใหม่แล้ว IP เปลี่ยน เช่น 172.20.10.5
+ * ให้แก้บรรทัดนี้ตาม Terminal ใหม่
+ */
+const DEV_RESET_REDIRECT_URL = "exp://172.20.10.2:8081/--/reset-password";
+
+const getResetRedirectUrl = () => {
+  /**
+   * ตอนพัฒนาใน Expo Go ใช้ URL แบบ fix ไปเลย
+   * เพื่อตัดปัญหา Linking.createURL สร้าง URL ไม่ตรงกับ Supabase Redirect URLs
+   */
+  if (__DEV__) {
+    return DEV_RESET_REDIRECT_URL;
+  }
+
+  /**
+   * ตอน build จริงค่อยให้ Expo สร้าง URL เอง
+   */
+  return Linking.createURL("/reset-password");
+};
 
 export default function ForgotPasswordScreen() {
-  const [email, setEmail] = useState('');
-
-  // [STEP 3.5] เพิ่ม loading กันกดส่งซ้ำ
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // [AUTH BACK] ปุ่มย้อนกลับ
   const handleBack = () => {
     if (router.canGoBack && router.canGoBack()) {
       router.back();
@@ -46,16 +70,16 @@ export default function ForgotPasswordScreen() {
     }
   };
 
-  // [STEP 3.5] ส่งอีเมล reset password จริงผ่าน Supabase
   const handleResetPassword = async () => {
-    if (!email.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
       Alert.alert("แจ้งเตือน", "กรุณากรอกอีเมล");
       return;
     }
 
-    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    const emailRegex = /\S+@\S+\.\S+/;
     if (!emailRegex.test(cleanEmail)) {
       Alert.alert("ข้อผิดพลาด", "รูปแบบอีเมลไม่ถูกต้อง");
       return;
@@ -64,10 +88,16 @@ export default function ForgotPasswordScreen() {
     try {
       setLoading(true);
 
-      // [STEP 3.5] ส่ง reset password email
-      // ตอนนี้ยังไม่ทำ deep link / reset screen ในแอป
-      // ถ้ากดลิงก์ในเมลแล้วไป localhost ถือว่ายังไม่พัง เป็นเรื่อง redirect URL ของ Supabase
-      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail);
+      const redirectTo = getResetRedirectUrl();
+
+      console.log("====================================");
+      console.log("RESET EMAIL:", cleanEmail);
+      console.log("RESET REDIRECT URL:", redirectTo);
+      console.log("====================================");
+
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo,
+      });
 
       if (error) {
         throw error;
@@ -84,6 +114,8 @@ export default function ForgotPasswordScreen() {
         ]
       );
     } catch (err) {
+      console.log("RESET PASSWORD ERROR:", err);
+
       Alert.alert(
         "ส่งอีเมลไม่สำเร็จ",
         err?.message || "เกิดข้อผิดพลาดระหว่างส่งอีเมลรีเซ็ตรหัสผ่าน"
@@ -98,7 +130,7 @@ export default function ForgotPasswordScreen() {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
         <View style={styles.header}>
@@ -106,6 +138,7 @@ export default function ForgotPasswordScreen() {
             style={styles.backButton}
             activeOpacity={0.7}
             onPress={handleBack}
+            disabled={loading}
           >
             <Image source={backIcon} style={styles.backIconStyle} />
           </TouchableOpacity>
@@ -115,7 +148,7 @@ export default function ForgotPasswordScreen() {
 
         <View style={styles.contentView}>
           <ScrollView
-            style={{ width: '100%' }}
+            style={{ width: "100%" }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ paddingBottom: 40, paddingTop: 20 }}
@@ -135,21 +168,19 @@ export default function ForgotPasswordScreen() {
                   value={email}
                   onChangeText={setEmail}
                   autoCapitalize="none"
+                  autoCorrect={false}
                   keyboardType="email-address"
                   textContentType="emailAddress"
                   returnKeyType="done"
+                  editable={!loading}
                   onSubmitEditing={handleResetPassword}
                 />
               </View>
             </View>
 
-            <View style={{ alignItems: 'center', marginTop: 30 }}>
+            <View style={{ alignItems: "center", marginTop: 30 }}>
               <TouchableOpacity
-                // [STEP 3.5] ถ้า loading อยู่ ปิดปุ่มชั่วคราว
-                style={[
-                  styles.sendButton,
-                  loading && styles.disabledButton,
-                ]}
+                style={[styles.sendButton, loading && styles.disabledButton]}
                 onPress={handleResetPassword}
                 activeOpacity={0.9}
                 disabled={loading}
@@ -163,6 +194,7 @@ export default function ForgotPasswordScreen() {
             <TouchableOpacity
               style={styles.backToLoginBtn}
               onPress={() => router.replace("/login")}
+              disabled={loading}
             >
               <Text style={styles.backToLoginText}>BACK TO LOGIN</Text>
             </TouchableOpacity>
@@ -180,10 +212,10 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     height: 60,
-    marginTop: Platform.OS === 'ios' ? 5 : 10,
+    marginTop: Platform.OS === "ios" ? 5 : 10,
     paddingHorizontal: 20,
     marginBottom: 15,
   },
@@ -191,8 +223,8 @@ const styles = StyleSheet.create({
   backButton: {
     width: 44,
     height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 4,
     marginLeft: -10,
   },
@@ -200,13 +232,13 @@ const styles = StyleSheet.create({
   backIconStyle: {
     width: 24,
     height: 24,
-    resizeMode: 'contain',
+    resizeMode: "contain",
     tintColor: COLORS.primary,
   },
 
   headerTitle: {
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
     color: COLORS.primary,
     letterSpacing: 0.5,
   },
@@ -234,35 +266,37 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 15,
     color: COLORS.text_gray,
-    fontWeight: '600',
+    fontWeight: "600",
     lineHeight: 24,
     marginBottom: 28,
   },
 
   inputGroup: {
-    width: '100%',
+    width: "100%",
     marginBottom: 18,
   },
 
   inputLabel: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: COLORS.primary,
     marginBottom: 8,
     marginLeft: 5,
   },
 
   inputFieldContainer: {
-    width: '100%',
+    width: "100%",
     height: 55,
     backgroundColor: COLORS.bg_white,
     borderRadius: 15,
     paddingHorizontal: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.06,
         shadowRadius: 4,
@@ -271,24 +305,22 @@ const styles = StyleSheet.create({
         elevation: 2,
       },
     }),
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
 
   inputText: {
     flex: 1,
     fontSize: 15,
     color: COLORS.text_dark,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
 
   sendButton: {
-    width: '80%',
+    width: "80%",
     height: 50,
     backgroundColor: COLORS.green,
     borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     ...Platform.select({
       ios: {
         shadowColor: COLORS.green,
@@ -302,25 +334,24 @@ const styles = StyleSheet.create({
     }),
   },
 
-  // [STEP 3.5] style ปุ่มตอนกำลังส่งอีเมล
   disabledButton: {
     opacity: 0.6,
   },
 
   sendButtonText: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: COLORS.bg_white,
   },
 
   backToLoginBtn: {
     marginTop: 28,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   backToLoginText: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: COLORS.text_dark,
   },
 });

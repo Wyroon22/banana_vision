@@ -382,38 +382,70 @@ useEffect(() => {
 
       <Pressable
         // [STEP 4.2] กดแล้วออกจากระบบ
-        onPress={handleLogout}
-        style={{
+      onPress={handleLogout}
+      android_ripple={{ color: "#FFCDD2" }} // [UI EFFECT] Android กดแล้วมี ripple
+      style={({ pressed }) => [
+        {
           // [STEP 4.3] ลดขนาดปุ่ม Logout ให้ Header สมดุล
           paddingVertical: 8,
           paddingHorizontal: 10,
           borderRadius: 999,
           backgroundColor: "#EF4444",
-        }}
-      >
-        <Text
-          style={{
-            color: "#FFFFFF",
-            fontWeight: "900",
-            fontSize: 13,
-          }}
-        >
-          Logout
-        </Text>
-      </Pressable>
+
+          // [UI EFFECT] เพิ่มเงาแดงเบา ๆ ให้ปุ่มดูมีมิติ
+          shadowColor: "#EF4444",
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.22,
+          shadowRadius: 5,
+          elevation: 3,
+        },
+
+        // [UI EFFECT] ตอนกด ปุ่มจะยุบ/จางลงนิด ๆ
+        pressed && {
+          opacity: 0.8,
+          transform: [{ scale: 0.95 }],
+        },
+      ]}
+    >
+      <Text
+        style={{
+          color: "#FFFFFF",
+          fontWeight: "900",
+          fontSize: 13,
+      }}
+    >
+      Logout
+    </Text>
+    </Pressable>
     </>
     ) : (
     <>
       <Pressable
         onPress={() => router.push("/login" as any)}
-        style={{
-          paddingVertical: 8,
-          paddingHorizontal: 12,
-          borderRadius: 999,
-          borderWidth: 1,
-          borderColor: "#007AFF",
-          backgroundColor: "#FFFFFF",
-        }}
+        android_ripple={{ color: "#D6E9FF" }} // [UI EFFECT] Android กดแล้วมี ripple
+        style={({ pressed }) => [
+          {
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: "#007AFF",
+            backgroundColor: "#FFFFFF",
+
+            // [UI EFFECT] เพิ่มเงาให้ปุ่มดูมีมิติ
+          shadowColor: "#007AFF",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.12,
+          shadowRadius: 4,
+          elevation: 2,
+          },
+
+          // [UI EFFECT] ตอนกด ปุ่มจะยุบ/จางลงนิด ๆ
+          pressed && {
+            opacity: 0.75,
+            transform: [{ scale: 0.96 }],
+          },
+        ]}
       >
         <Text
           style={{
@@ -424,27 +456,44 @@ useEffect(() => {
         >
           Login
         </Text>
+  
       </Pressable>
 
       <Pressable
         onPress={() => router.push("/register" as any)}
-        style={{
-          paddingVertical: 8,
-          paddingHorizontal: 12,
-          borderRadius: 999,
-          backgroundColor: "#007AFF",
-        }}
+        android_ripple={{ color: "#4DA3FF" }} // [UI EFFECT] Android กดแล้วมี ripple
+        style={({ pressed }) => [
+          {
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            borderRadius: 999,
+            backgroundColor: "#007AFF",
+
+            // [UI EFFECT] เพิ่มเงาให้ปุ่ม Register ดูนูนขึ้น
+            shadowColor: "#007AFF",
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.25,
+            shadowRadius: 5,
+            elevation: 3,
+          },
+
+          // [UI EFFECT] ตอนกด ปุ่มจะยุบ/จางลงนิด ๆ
+          pressed && {
+            opacity: 0.82,
+            transform: [{ scale: 0.96 }],
+          },
+        ]}
       >
         <Text
           style={{
             color: "#FFFFFF",
             fontWeight: "900",
             fontSize: 13,
-          }}
-            >
-              Register
-            </Text>
-        </Pressable>
+        }}
+      >
+          Register
+        </Text>
+      </Pressable>
           </>
         )}
         </View>

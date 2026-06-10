@@ -7,9 +7,11 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+from urllib.parse import quote
 
 # [STEP 9] เพิ่ม BaseModel, Field สำหรับรับข้อมูล Feedback แบบ JSON
 from pydantic import BaseModel, Field
@@ -103,6 +105,77 @@ def health():
         "detect_model_path": DETECT_MODEL_PATH,
         "cls_model_path": CLS_MODEL_PATH,
     }
+
+@app.get("/auth/reset-bridge", response_class=HTMLResponse)
+async def reset_bridge(
+    token_hash: Optional[str] = Query(None),
+    reset_type: str = Query("recovery", alias="type"),
+):
+    if not token_hash:
+        return HTMLResponse(
+            content="""
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                    <title>Reset Password Error</title>
+                </head>
+                <body style="font-family: Arial; padding: 32px; background: #FBF7E3;">
+                    <h2>Reset Password Error</h2>
+                    <p>ไม่พบ token_hash จากลิงก์ กรุณาขอ Reset Password ใหม่อีกครั้ง</p>
+                </body>
+            </html>
+            """,
+            status_code=400,
+        )
+
+    expo_url = (
+        "exp://172.20.10.2:8081/--/reset-password"
+        f"?token_hash={quote(token_hash, safe='')}"
+        f"&type={quote(reset_type, safe='')}"
+    )
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>Open BananaVision</title>
+        </head>
+
+        <body style="font-family: Arial; padding: 32px; background: #FBF7E3;">
+            <h2>Reset Password</h2>
+
+            <p>กดปุ่มด้านล่างเพื่อเปิดแอป BananaVision และตั้งรหัสผ่านใหม่</p>
+
+            <a
+                href="{expo_url}"
+                style="
+                    display: inline-block;
+                    padding: 16px 24px;
+                    background: #27AE60;
+                    color: white;
+                    border-radius: 999px;
+                    text-decoration: none;
+                    font-weight: bold;
+                    font-size: 18px;
+            "
+            >
+                Open BananaVision
+            </a>
+
+            <p style="margin-top: 24px; color: #666;">
+                ถ้าปุ่มไม่ทำงาน ให้ copy ลิงก์นี้ไปเปิด:
+            </p>
+
+            <p style="word-break: break-all;">
+                {expo_url}
+            </p>
+        </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html)
 
 
 @app.post("/detect")
