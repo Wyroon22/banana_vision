@@ -76,6 +76,13 @@ export default function RootLayout() {
             headerShown: false,
           }}
         />
+
+        <Stack.Screen
+          name="scan-detail"
+          options={{
+            headerShown: false,
+          }}
+        />
       </Stack>
 
       <StatusBar style="light" />
