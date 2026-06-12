@@ -345,40 +345,88 @@ useEffect(() => {
             </Text>
       ) : user ? (
     <>
-      <View
-        style={{
-           // [STEP 4.3] ลดขนาดกล่อง Member ไม่ให้เบียดชื่อแอป
-          maxWidth: 135,
-          paddingVertical: 7,
-          paddingHorizontal: 10,
-          borderRadius: 999,
-          backgroundColor: "#ECFDF5",
-          borderWidth: 1,
-          borderColor: "#22C55E",
-        }}
+      <Pressable
+          onPress={() => router.push("/profile" as any)}
+            android_ripple={{ color: "#BBF7D0" }}
+            style={({ pressed }) => [
+              {
+                // [STEP 8.2] เปลี่ยนกล่อง Member เป็นปุ่ม Profile Chip
+                maxWidth: 150,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 7,
+                paddingVertical: 6,
+                paddingHorizontal: 8,
+                borderRadius: 999,
+                backgroundColor: "#ECFDF5",
+                borderWidth: 1,
+                borderColor: "#22C55E",
+              },
+            pressed && {
+                opacity: 0.8,
+                transform: [{ scale: 0.96 }],
+              },
+            ]}
       >
+        {user?.user_metadata?.avatar_url ? (
+          <Image
+            source={{ uri: user.user_metadata.avatar_url }}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: "#DCFCE7",
+              }}
+      />
+        ) : (
+        <View
+          style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: "#16A34A",
+                alignItems: "center",
+                justifyContent: "center",
+          }}
+        >
+        <Text
+          style={{
+                color: "#FFFFFF",
+                fontWeight: "900",
+                fontSize: 14,
+          }}
+        >
+          {(user?.user_metadata?.display_name || "M")
+            .slice(0, 1)
+            .toUpperCase()}
+        </Text>
+      </View>
+    )}
+
+      <View style={{ flex: 1 }}>
         <Text
           numberOfLines={1}
           style={{
-            color: "#166534",
-            fontWeight: "900",
-            fontSize: 12,
+                color: "#166534",
+                fontWeight: "900",
+                fontSize: 12,
           }}
-        >
-          Member
+      >
+          {user?.user_metadata?.display_name || "Member"}
         </Text>
 
         <Text
           numberOfLines={1}
           style={{
-            color: "#166534",
-            fontWeight: "700",
-            fontSize: 10,
+                color: "#15803D",
+                fontWeight: "700",
+                fontSize: 10,
           }}
         >
-          {user.email}
+          โปรไฟล์
         </Text>
       </View>
+      </Pressable>
 
       <Pressable
         // [STEP 4.2] กดแล้วออกจากระบบ
