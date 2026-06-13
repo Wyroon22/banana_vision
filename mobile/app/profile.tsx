@@ -146,18 +146,31 @@ export default function ProfileScreen() {
       }
 
       const { data, error } = await supabase.auth.updateUser({
-        data: {
-          display_name: name,
-          avatar_url: avatarUrl || null,
-        },
-      });
+  data: {
+    display_name: name,
+    avatar_url: avatarUrl || null,
+  },
+});
 
-      if (error) {
-        throw error;
-      }
+if (error) {
+  throw error;
+}
 
-      setUser(data.user);
-      Alert.alert("บันทึกสำเร็จ", "อัปเดตข้อมูลโปรไฟล์แล้ว");
+    // [STEP 8.8] บันทึกลง public.profiles ด้วย
+    const { error: profileError } = await supabase.from("profiles").upsert({
+      id: data.user.id,
+      email: data.user.email,
+      display_name: name,
+      avatar_url: avatarUrl || null,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    setUser(data.user);
+    Alert.alert("บันทึกสำเร็จ", "อัปเดตข้อมูลโปรไฟล์แล้ว");
     } catch (err: any) {
       Alert.alert("บันทึกไม่สำเร็จ", err?.message || "กรุณาลองใหม่");
     } finally {
@@ -227,21 +240,34 @@ export default function ProfileScreen() {
       const publicUrl = publicData.publicUrl;
 
       const { data: updatedData, error: updateError } =
-        await supabase.auth.updateUser({
-          data: {
-            display_name: displayName.trim() || "Member",
-            avatar_url: publicUrl,
-          },
-        });
+  await supabase.auth.updateUser({
+    data: {
+      display_name: displayName.trim() || "Member",
+      avatar_url: publicUrl,
+    },
+  });
 
-      if (updateError) {
-        throw updateError;
-      }
+if (updateError) {
+  throw updateError;
+}
 
-      setAvatarUrl(publicUrl);
-      setUser(updatedData.user);
+  // [STEP 8.9] บันทึกรูปลง public.profiles ด้วย
+    const { error: profileError } = await supabase.from("profiles").upsert({
+      id: updatedData.user.id,
+      email: updatedData.user.email,
+      display_name: displayName.trim() || "Member",
+      avatar_url: publicUrl,
+      updated_at: new Date().toISOString(),
+    });
 
-      Alert.alert("อัปโหลดสำเร็จ", "เปลี่ยนรูปโปรไฟล์แล้ว");
+    if (profileError) {
+      throw profileError;
+    }
+
+    setAvatarUrl(publicUrl);
+    setUser(updatedData.user);
+
+    Alert.alert("อัปโหลดสำเร็จ", "เปลี่ยนรูปโปรไฟล์แล้ว");
     } catch (err: any) {
       Alert.alert("อัปโหลดไม่สำเร็จ", err?.message || "กรุณาลองใหม่");
     } finally {
