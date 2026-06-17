@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -172,6 +176,10 @@ export default function ScanDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // [STEP 10] เก็บคอมเมนต์รายลูกตาม id ของ scan_details
+  const [comments, setComments] = useState<Record<string, string>>({});
+  const [savingCommentId, setSavingCommentId] = useState<string | null>(null);
+
   const loadDetail = useCallback(async () => {
     try {
       setLoading(true);
@@ -219,7 +227,19 @@ export default function ScanDetailScreen() {
         throw detailError;
       }
 
-      setDetails(Array.isArray(detailData) ? detailData : []);
+      const detailRows = Array.isArray(detailData) ? detailData : [];
+
+      setDetails(detailRows);
+
+      // [STEP 10] เตรียมคอมเมนต์เดิมของแต่ละลูกให้ TextInput
+      const nextComments: Record<string, string> = {};
+
+      detailRows.forEach((row, index) => {
+        const key = String(row.id ?? index);
+        nextComments[key] = row.user_comment ?? "";
+      });
+
+      setComments(nextComments);
     } catch (err: any) {
       setErrorMsg(err?.message || "โหลดรายละเอียดไม่สำเร็จ");
     } finally {
@@ -230,6 +250,63 @@ export default function ScanDetailScreen() {
   useEffect(() => {
     loadDetail();
   }, [loadDetail]);
+
+  // [STEP 10] บันทึกคอมเมนต์รายลูกลง scan_details.user_comment
+  const handleSaveComment = async (row: any, index: number) => {
+    const detailId = row.id;
+
+    if (!detailId) {
+      Alert.alert("บันทึกไม่ได้", "ไม่พบ id ของ scan_detail แถวนี้");
+      return;
+    }
+
+    const key = String(detailId);
+    const text = comments[key]?.trim() ?? "";
+
+    try {
+      setSavingCommentId(key);
+
+      const now = new Date().toISOString();
+
+      const { error } = await supabase
+        .from("scan_details")
+        .update({
+          user_comment: text || null,
+          comment_updated_at: now,
+        })
+        .eq("id", detailId)
+        .eq("scan_id", scanId);
+
+      if (error) {
+        throw error;
+      }
+
+      // [STEP 10] อัปเดต UI ทันทีหลังบันทึก
+      setDetails((prev) =>
+        prev.map((item) =>
+          item.id === detailId
+            ? {
+                ...item,
+                user_comment: text || null,
+                comment_updated_at: now,
+              }
+            : item
+        )
+      );
+
+      Alert.alert(
+        "บันทึกสำเร็จ",
+        `บันทึกคอมเมนต์กล้วยลูกที่ ${index + 1} แล้ว`
+      );
+    } catch (err: any) {
+      Alert.alert(
+        "บันทึกไม่สำเร็จ",
+        err?.message || "กรุณาลองใหม่อีกครั้ง"
+      );
+    } finally {
+      setSavingCommentId(null);
+    }
+  };
 
   const imageUrl = useMemo(() => {
     return buildImageUrl(
@@ -253,15 +330,22 @@ export default function ScanDetailScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFDF7" }}>
-      <ScrollView
+      <KeyboardAvoidingView
         style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingHorizontal: 18,
-          paddingTop: 46,
-          paddingBottom: 40,
-          gap: 14,
-        }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={90}
       >
+        <ScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={{
+            paddingHorizontal: 18,
+            paddingTop: 46,
+            paddingBottom: 70,
+            gap: 14,
+          }}
+        >
         {/* Header Buttons */}
         <View
           style={{
@@ -330,7 +414,7 @@ export default function ScanDetailScreen() {
               marginTop: 4,
             }}
           >
-            รายละเอียดผลการตรวจรายลูก
+            รายละเอียดผลการตรวจรายลูก พร้อมคอมเมนต์แยกแต่ละลูก
           </Text>
         </View>
 
@@ -494,6 +578,8 @@ export default function ScanDetailScreen() {
               const labelColor = getRipenessColor(label);
               const confidence = getConfidence(row);
               const bboxText = getBBoxText(row);
+              const commentKey = String(row.id ?? index);
+              const isSavingThisRow = savingCommentId === commentKey;
 
               return (
                 <View
@@ -565,12 +651,116 @@ export default function ScanDetailScreen() {
                   >
                     BBox: {bboxText}
                   </Text>
+
+                  {/* [STEP 10] ช่องคอมเมนต์รายลูก */}
+                  <View
+                    style={{
+                      marginTop: 8,
+                      gap: 8,
+                      backgroundColor: "#F9FAFB",
+                      borderRadius: 14,
+                      padding: 12,
+                      borderWidth: 1,
+                      borderColor: "#E5E7EB",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#111827",
+                        fontWeight: "900",
+                        fontSize: 15,
+                      }}
+                    >
+                      📝 คอมเมนต์รายลูก
+                    </Text>
+
+                    <TextInput
+                      value={comments[commentKey] ?? ""}
+                      onChangeText={(text) => {
+                        setComments((prev) => ({
+                          ...prev,
+                          [commentKey]: text,
+                        }));
+                      }}
+                      placeholder={`เขียนคอมเมนต์สำหรับกล้วยลูกที่ ${index + 1}`}
+                      placeholderTextColor="#9CA3AF"
+                      multiline
+                      style={{
+                        minHeight: 80,
+                        backgroundColor: "#FFFFFF",
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: "#D1D5DB",
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        color: "#111827",
+                        fontWeight: "700",
+                        textAlignVertical: "top",
+                      }}
+                    />
+
+                    {!!row.user_comment && (
+                      <Text
+                        style={{
+                          color: "#6B7280",
+                          fontWeight: "700",
+                          fontSize: 12,
+                        }}
+                      >
+                        คอมเมนต์ล่าสุด: {row.user_comment}
+                      </Text>
+                    )}
+
+                    {!!row.comment_updated_at && (
+                      <Text
+                        style={{
+                          color: "#9CA3AF",
+                          fontWeight: "700",
+                          fontSize: 12,
+                        }}
+                      >
+                        อัปเดตล่าสุด: {formatDate(row.comment_updated_at)}
+                      </Text>
+                    )}
+
+                    <Pressable
+                      onPress={() => handleSaveComment(row, index)}
+                      disabled={isSavingThisRow}
+                      style={({ pressed }) => [
+                        {
+                          backgroundColor: isSavingThisRow
+                            ? "#93C5FD"
+                            : "#007AFF",
+                          borderRadius: 12,
+                          paddingVertical: 12,
+                          alignItems: "center",
+                        },
+                        pressed &&
+                          !isSavingThisRow && {
+                            opacity: 0.8,
+                            transform: [{ scale: 0.97 }],
+                          },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: "#FFFFFF",
+                          fontWeight: "900",
+                        }}
+                      >
+                        {isSavingThisRow
+                          ? "กำลังบันทึก..."
+                          : "บันทึกคอมเมนต์"}
+                      </Text>
+                    </Pressable>
+                  </View>
                 </View>
               );
             })}
           </>
         )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
