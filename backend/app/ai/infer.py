@@ -20,6 +20,7 @@ class Detection:
 # parents[2] = backend/
 BASE_DIR = Path(__file__).resolve().parents[2]
 
+# โหลด Model 1 และ Model 2
 DEFAULT_DETECT_MODEL_PATH = BASE_DIR / "models" / "banana_finger_detect.pt"
 DEFAULT_CLS_MODEL_PATH = BASE_DIR / "models" / "banana_ripeness_cls_4cls.pt"
 

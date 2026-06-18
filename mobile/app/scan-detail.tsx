@@ -122,7 +122,7 @@ function getRipenessColor(label: string) {
 function getConfidence(row: any) {
   const value = pickNumber(
     row,
-    ["confidence", "conf", "score", "ripeness_confidence"],
+    ["confidence", "conf", "score", "ripeness_confidence", "ripeness_conf"],
     0
   );
 
@@ -162,6 +162,48 @@ function getBBoxText(row: any) {
   return "-";
 }
 
+function StarRating({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={{ flexDirection: "row", gap: 8 }}>
+      {[1, 2, 3, 4, 5].map((star) => {
+        const active = star <= value;
+
+        return (
+          <Pressable
+            key={star}
+            disabled={disabled}
+            onPress={() => onChange(star)}
+            style={({ pressed }) => [
+              {
+                opacity: disabled ? 0.45 : pressed ? 0.65 : 1,
+                transform: pressed ? [{ scale: 0.9 }] : [{ scale: 1 }],
+              },
+            ]}
+          >
+            <Text
+              style={{
+                fontSize: 34,
+                color: active ? "#F59E0B" : "#D1D5DB",
+                fontWeight: "900",
+              }}
+            >
+              {active ? "★" : "☆"}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function ScanDetailScreen() {
   const params = useLocalSearchParams();
 
@@ -175,10 +217,12 @@ export default function ScanDetailScreen() {
   const [details, setDetails] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
-
+  
+  
   // [STEP 10] เก็บคอมเมนต์รายลูกตาม id ของ scan_details
   const [comments, setComments] = useState<Record<string, string>>({});
   const [savingCommentId, setSavingCommentId] = useState<string | null>(null);
+  const [ratings, setRatings] = useState<Record<string, number>>({});
 
   const loadDetail = useCallback(async () => {
     try {
@@ -221,6 +265,7 @@ export default function ScanDetailScreen() {
         .from("scan_details")
         .select("*")
         .eq("scan_id", scanId)
+        .order("banana_index", { ascending: true })
         .order("created_at", { ascending: true });
 
       if (detailError) {
@@ -231,15 +276,19 @@ export default function ScanDetailScreen() {
 
       setDetails(detailRows);
 
-      // [STEP 10] เตรียมคอมเมนต์เดิมของแต่ละลูกให้ TextInput
+      // [STEP 10] เตรียมคอมเมนต์เดิม + คะแนนดาวเดิมของแต่ละลูกให้ UI
       const nextComments: Record<string, string> = {};
+      const nextRatings: Record<string, number> = {};
 
       detailRows.forEach((row, index) => {
         const key = String(row.id ?? index);
+
         nextComments[key] = row.user_comment ?? "";
+        nextRatings[key] = Number(row.user_rating ?? 0);
       });
 
       setComments(nextComments);
+      setRatings(nextRatings);
     } catch (err: any) {
       setErrorMsg(err?.message || "โหลดรายละเอียดไม่สำเร็จ");
     } finally {
@@ -251,9 +300,9 @@ export default function ScanDetailScreen() {
     loadDetail();
   }, [loadDetail]);
 
-  // [STEP 10] บันทึกคอมเมนต์รายลูกลง scan_details.user_comment
+  // [STEP 10] บันทึกคอมเมนต์ + คะแนนดาวรายลูกลง scan_details
   const handleSaveComment = async (row: any, index: number) => {
-    const detailId = row.id;
+    const detailId = row.id ?? row.detail_id ?? row.scan_detail_id;
 
     if (!detailId) {
       Alert.alert("บันทึกไม่ได้", "ไม่พบ id ของ scan_detail แถวนี้");
@@ -262,42 +311,58 @@ export default function ScanDetailScreen() {
 
     const key = String(detailId);
     const text = comments[key]?.trim() ?? "";
+    const rating = Number(ratings[key] ?? 0);
 
     try {
       setSavingCommentId(key);
 
       const now = new Date().toISOString();
 
-      const { error } = await supabase
+      const { data: updatedRow, error } = await supabase
         .from("scan_details")
         .update({
           user_comment: text || null,
+          user_rating: rating > 0 ? rating : null,
           comment_updated_at: now,
         })
         .eq("id", detailId)
-        .eq("scan_id", scanId);
+        .eq("scan_id", scanId)
+        .select("id, user_comment, user_rating, comment_updated_at")
+        .single();
 
       if (error) {
         throw error;
       }
 
-      // [STEP 10] อัปเดต UI ทันทีหลังบันทึก
+      if (!updatedRow) {
+        throw new Error("ไม่พบแถวที่ถูกอัปเดตใน scan_details");
+      }
+
+      // [STEP 10] อัปเดต UI ทันทีหลังบันทึก ด้วยค่าที่ Supabase ส่งกลับมา
       setDetails((prev) =>
         prev.map((item) =>
           item.id === detailId
             ? {
                 ...item,
-                user_comment: text || null,
-                comment_updated_at: now,
+                user_comment: updatedRow.user_comment,
+                user_rating: updatedRow.user_rating,
+                comment_updated_at: updatedRow.comment_updated_at,
               }
             : item
         )
       );
 
-      Alert.alert(
-        "บันทึกสำเร็จ",
-        `บันทึกคอมเมนต์กล้วยลูกที่ ${index + 1} แล้ว`
-      );
+      setComments((prev) => ({
+        ...prev,
+        [key]: updatedRow.user_comment ?? "",
+      }));
+
+      setRatings((prev) => ({
+        ...prev,
+        [key]: Number(updatedRow.user_rating ?? 0),
+      }));
+
+      Alert.alert("บันทึกสำเร็จ", `บันทึกกล้วยลูกที่ ${index + 1} แล้ว`);
     } catch (err: any) {
       Alert.alert(
         "บันทึกไม่สำเร็จ",
@@ -638,7 +703,7 @@ export default function ScanDetailScreen() {
                       fontWeight: "800",
                     }}
                   >
-                    Confidence: {confidence}
+                    ความมั่นใจความสุก: {confidence}
                   </Text>
 
                   <Text
@@ -669,6 +734,28 @@ export default function ScanDetailScreen() {
                         color: "#111827",
                         fontWeight: "900",
                         fontSize: 15,
+                      }}
+                    >
+                      ⭐ ให้คะแนนกล้วยลูกนี้
+                    </Text>
+
+                    <StarRating
+                      value={ratings[commentKey] ?? 0}
+                      disabled={isSavingThisRow}
+                      onChange={(value) => {
+                        setRatings((prev) => ({
+                          ...prev,
+                          [commentKey]: value,
+                        }));
+                      }}
+                    />
+
+                    <Text
+                      style={{
+                        color: "#111827",
+                        fontWeight: "900",
+                        fontSize: 15,
+                        marginTop: 4,
                       }}
                     >
                       📝 คอมเมนต์รายลูก
@@ -708,6 +795,18 @@ export default function ScanDetailScreen() {
                         }}
                       >
                         คอมเมนต์ล่าสุด: {row.user_comment}
+                      </Text>
+                    )}
+
+                    {!!row.user_rating && (
+                      <Text
+                        style={{
+                          color: "#6B7280",
+                          fontWeight: "700",
+                          fontSize: 12,
+                        }}
+                      >
+                        คะแนนล่าสุด: {row.user_rating} ดาว
                       </Text>
                     )}
 
