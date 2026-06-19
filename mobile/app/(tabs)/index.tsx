@@ -1,21 +1,108 @@
-import { View, Text, Image, Pressable, ScrollView, SafeAreaView, KeyboardAvoidingView, Platform, Alert } from "react-native";
+import {
+  View,
+  Text,
+  Image,
+  Pressable,
+  ScrollView,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  TextInput,
+} from "react-native";
 import { useEffect, useMemo, useState } from "react";
 import { router } from "expo-router";
+
 // [STEP 4.1] import Supabase client เพื่ออ่าน session/login state
 import { supabase } from "../../lib/supabase";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 
-// [STEP 9] เพิ่ม Component สำหรับให้คะแนนดาว + ส่ง Feedback หลัง Detect สำเร็จ
-import FeedbackCard from "../../components/FeedbackCard";
-
-
 const API_BASE = "http://172.20.10.2:8000";
 const TARGET_WIDTH = 1280; // ✅ resize กันไฟล์ใหญ่เกิน
+
+function StarRating({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={{ flexDirection: "row", gap: 8 }}>
+      {[1, 2, 3, 4, 5].map((star) => {
+        const active = star <= value;
+
+        return (
+          <Pressable
+            key={star}
+            disabled={disabled}
+            onPress={() => onChange(star)}
+            style={({ pressed }) => [
+              {
+                opacity: disabled ? 0.45 : pressed ? 0.65 : 1,
+                transform: pressed ? [{ scale: 0.9 }] : [{ scale: 1 }],
+              },
+            ]}
+          >
+            <Text
+              style={{
+                fontSize: 34,
+                color: active ? "#F59E0B" : "#D1D5DB",
+                fontWeight: "900",
+              }}
+            >
+              {active ? "★" : "☆"}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function getRipenessColor(label?: string | null) {
+  if (label === "ดิบ" || label === "green") return "#15803D";
+  if (label === "ห่าม" || label === "breaker") return "#B45309";
+  if (label === "สุก" || label === "ripe") return "#EA580C";
+  if (label === "งอม" || label === "overripe") return "#DC2626";
+
+  return "#111827";
+}
+
+function formatConfidence(value: any) {
+  const n = Number(value ?? 0);
+
+  if (!Number.isFinite(n)) {
+    return "-";
+  }
+
+  if (n <= 1) {
+    return `${Math.round(n * 100)}%`;
+  }
+
+  return `${Math.round(n)}%`;
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "-";
+
+  try {
+    return new Date(value).toLocaleString("th-TH", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return value;
+  }
+}
 
 export default function HomeScreen() {
   const [image, setImage] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
+
   // [STEP 4.1] เก็บ user ที่ login อยู่
   const [user, setUser] = useState<any>(null);
 
@@ -27,81 +114,91 @@ export default function HomeScreen() {
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [showDebug, setShowDebug] = useState(false);
 
+  // [STEP 11] เก็บ feedback รายลูกบนหน้า Home หลัง Detect
+  const [scanDetails, setScanDetails] = useState<any[]>([]);
+  const [bananaComments, setBananaComments] = useState<Record<string, string>>({});
+  const [bananaRatings, setBananaRatings] = useState<Record<string, number>>({});
+  const [savingBananaId, setSavingBananaId] = useState<string | null>(null);
+
   // [STEP 4.1] เช็กว่า user login อยู่ไหม ตอนเปิดหน้า Home
-useEffect(() => {
-  let mounted = true;
+  useEffect(() => {
+    let mounted = true;
 
-  const loadSession = async () => {
-    try {
-      const { data, error } = await supabase.auth.getSession();
+    const loadSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
 
-      if (error) {
-        console.log("[auth] getSession error:", error.message);
+        if (error) {
+          console.log("[auth] getSession error:", error.message);
+        }
+
+        if (mounted) {
+          setUser(data?.session?.user ?? null);
+          setAuthLoading(false);
+        }
+      } catch (err) {
+        console.log("[auth] getSession failed:", err);
+
+        if (mounted) {
+          setUser(null);
+          setAuthLoading(false);
+        }
       }
+    };
 
-      if (mounted) {
-        setUser(data?.session?.user ?? null);
+    loadSession();
+
+    // [STEP 4.1] ฟัง event เวลา login/logout/session เปลี่ยน
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        const nextUser = session?.user ?? null;
+
+        // [STEP 5 FIX] ถ้า Auth state เปลี่ยน เช่น Login / Logout
+        // ให้เคลียร์รูป ผลตรวจ และ Debug เก่า
+        // กันข้อมูล Member ค้างไปโผล่ตอน Guest
+        setImage(null);
+        setResult(null);
+        setAnnotatedUrl(null);
+        setStatusText("");
+        setErrorMsg("");
+        setShowDebug(false);
+        setScanDetails([]);
+        setBananaComments({});
+        setBananaRatings({});
+        setSavingBananaId(null);
+
+        setUser(nextUser);
         setAuthLoading(false);
       }
-    } catch (err) {
-      console.log("[auth] getSession failed:", err);
+    );
 
-      if (mounted) {
-        setUser(null);
-        setAuthLoading(false);
-      }
-    }
-  };
-
-  loadSession();
-
-  // [STEP 4.1] ฟัง event เวลา login/logout/session เปลี่ยน
-  const { data: authListener } = supabase.auth.onAuthStateChange(
-    (_event, session) => {
-      const nextUser = session?.user ?? null;
-
-      // [STEP 5 FIX] ถ้า Auth state เปลี่ยน เช่น Login / Logout
-      // ให้เคลียร์รูป ผลตรวจ และ Debug เก่า
-      // กันข้อมูล Member ค้างไปโผล่ตอน Guest
-      setImage(null);
-      setResult(null);
-      setAnnotatedUrl(null);
-      setStatusText("");
-      setErrorMsg("");
-      setShowDebug(false);
-
-      setUser(nextUser);
-      setAuthLoading(false);
-      }
-  );
-
-  return () => {
-    mounted = false;
-    authListener?.subscription?.unsubscribe();
-  };
+    return () => {
+      mounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
   }, []);
 
   // [STEP 4.2] Logout ออกจาก Supabase แล้วเคลียร์ user ในหน้า Home
   const handleLogout = async () => {
-  try {
-    const { error } = await supabase.auth.signOut();
+    try {
+      const { error } = await supabase.auth.signOut();
 
-    if (error) {
-      throw error;
+      if (error) {
+        throw error;
+      }
+
+      // [STEP 5 FIX] เคลียร์รูป/ผลตรวจเก่าหลัง Logout
+      clearScanState();
+
+      setUser(null);
+      router.replace("/");
+    } catch (err: any) {
+      Alert.alert(
+        "Logout ไม่สำเร็จ",
+        err?.message || "เกิดข้อผิดพลาดระหว่างออกจากระบบ"
+      );
     }
-
-    // [STEP 5 FIX] เคลียร์รูป/ผลตรวจเก่าหลัง Logout
-    clearScanState();
-
-    setUser(null);
-    router.replace("/");
-  } catch (err: any) {
-    Alert.alert(
-      "Logout ไม่สำเร็จ",
-      err?.message || "เกิดข้อผิดพลาดระหว่างออกจากระบบ"
-    );
-  }
-};
+  };
 
   const summary = useMemo(() => {
     if (!result?.ok) return null;
@@ -156,6 +253,12 @@ useEffect(() => {
     setResult(null);
     setAnnotatedUrl(null);
     setShowDebug(false);
+
+    // [STEP 11] เคลียร์ feedback รายลูกเก่า
+    setScanDetails([]);
+    setBananaComments({});
+    setBananaRatings({});
+    setSavingBananaId(null);
   };
 
   // [STEP 5 FIX] เคลียร์ข้อมูล scan ทั้งหมดเมื่อเปลี่ยน user / logout
@@ -167,6 +270,10 @@ useEffect(() => {
     setStatusText("");
     setErrorMsg("");
     setShowDebug(false);
+    setScanDetails([]);
+    setBananaComments({});
+    setBananaRatings({});
+    setSavingBananaId(null);
   };
 
   // 📸 ถ่ายรูป
@@ -222,6 +329,114 @@ useEffect(() => {
     }
   };
 
+  const loadScanDetailsForFeedback = async (scanIdValue: string) => {
+    const { data, error } = await supabase
+      .from("scan_details")
+      .select("*")
+      .eq("scan_id", scanIdValue)
+      .order("banana_index", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.log("[STEP 11] load scan_details error:", error.message);
+      return;
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+
+    setScanDetails(rows);
+
+    const nextComments: Record<string, string> = {};
+    const nextRatings: Record<string, number> = {};
+
+    rows.forEach((row, index) => {
+      const key = String(row.id ?? index);
+
+      nextComments[key] = row.user_comment ?? "";
+      nextRatings[key] = Number(row.user_rating ?? 0);
+    });
+
+    setBananaComments(nextComments);
+    setBananaRatings(nextRatings);
+  };
+
+  const handleSaveBananaFeedback = async (row: any, index: number) => {
+    const detailId = row.id;
+    const bananaNo = Number(row.banana_index ?? index + 1);
+
+    if (!detailId) {
+      Alert.alert("บันทึกไม่ได้", "ไม่พบ id ของ scan_details แถวนี้");
+      return;
+    }
+
+    if (!user?.id) {
+      Alert.alert("ต้อง Login ก่อน", "กรุณา Login ก่อนบันทึกคอมเมนต์รายลูก");
+      return;
+    }
+
+    const key = String(detailId);
+    const text = bananaComments[key]?.trim() ?? "";
+    const rating = Number(bananaRatings[key] ?? 0);
+
+    try {
+      setSavingBananaId(key);
+
+      const now = new Date().toISOString();
+
+      const { data: updatedRow, error } = await supabase
+        .from("scan_details")
+        .update({
+          user_comment: text || null,
+          user_rating: rating > 0 ? rating : null,
+          comment_updated_at: now,
+        })
+        .eq("id", detailId)
+        .eq("scan_id", row.scan_id)
+        .select("id, user_comment, user_rating, comment_updated_at")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!updatedRow) {
+        throw new Error("ไม่พบแถวที่ถูกอัปเดตใน scan_details");
+      }
+
+      setScanDetails((prev) =>
+        prev.map((item) =>
+          item.id === detailId
+            ? {
+                ...item,
+                user_comment: updatedRow.user_comment,
+                user_rating: updatedRow.user_rating,
+                comment_updated_at: updatedRow.comment_updated_at,
+              }
+            : item
+        )
+      );
+
+      setBananaComments((prev) => ({
+        ...prev,
+        [key]: updatedRow.user_comment ?? "",
+      }));
+
+      setBananaRatings((prev) => ({
+        ...prev,
+        [key]: Number(updatedRow.user_rating ?? 0),
+      }));
+
+      Alert.alert("บันทึกสำเร็จ", `บันทึกกล้วยลูกที่ ${bananaNo} แล้ว`);
+    } catch (err: any) {
+      Alert.alert(
+        "บันทึกไม่สำเร็จ",
+        err?.message || "กรุณาลองใหม่อีกครั้ง"
+      );
+    } finally {
+      setSavingBananaId(null);
+    }
+  };
+
   const detect = async () => {
     if (!image) {
       setErrorMsg("ยังไม่ได้เลือกรูป");
@@ -268,6 +483,10 @@ useEffect(() => {
 
       setResult(json);
 
+      if (json?.scan_id) {
+        await loadScanDetailsForFeedback(json.scan_id);
+      }
+
       if (json?.result_url) {
         setAnnotatedUrl(`${API_BASE}${json.result_url}?t=${Date.now()}`);
       }
@@ -284,627 +503,818 @@ useEffect(() => {
   };
 
   return (
-  <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFDF7" }}>
-  <KeyboardAvoidingView
-    style={{ flex: 1 }}
-    behavior={Platform.OS === "ios" ? "padding" : "height"}
-    keyboardVerticalOffset={90}
-  >
-    <ScrollView
-      style={{ flex: 1 }}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      contentContainerStyle={{
-        paddingHorizontal: 18,
-        paddingTop: 46,
-        paddingBottom: 140, // [STEP 9.5] เพิ่มพื้นที่ล่างกันคีย์บอร์ดบัง
-      }}
-    >
-      <View style={{ gap: 14 }}>
-        {/* Header */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-          }}
-        >
-      <View style={{ flexShrink: 1, maxWidth: user ? 130 : 220 }}>
-        <Text
-          style={{
-            // [STEP 4.3] ลดขนาดตัวอักษร เพื่อไม่ให้ชน Member/Logout
-            fontSize: user ? 24 : 30,
-            fontWeight: "900",
-            color: "#111827",
-          }}
-          numberOfLines={1}
-        >
-          🍌 BVision
-        </Text>
-
-        <Text
-          style={{
-            color: "#6B7280",
-            marginTop: 4,
-            // [STEP 4.3] ตอนเป็น Member ลด subtitle ไม่ให้กินพื้นที่
-            fontSize: user ? 12 : 14,
-            fontWeight: "700",
-        }}
-        numberOfLines={user ? 2 : 1}
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFDF7" }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={90}
       >
-        AI ตรวจความสุกของกล้วย
-        </Text>
-      </View>
-
-          {/* [STEP 4.2] ขวาบน: ถ้า Login แล้ว แสดง Member + Logout / ถ้ายังไม่ Login แสดง Login + Register */}
-        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-          {authLoading ? (
-            <Text style={{ color: "#6B7280", fontWeight: "800" }}>
-              Checking...
-            </Text>
-      ) : user ? (
-    <>
-      <Pressable
-          onPress={() => router.push("/profile" as any)}
-            android_ripple={{ color: "#BBF7D0" }}
-            style={({ pressed }) => [
-              {
-                // [STEP 8.2] เปลี่ยนกล่อง Member เป็นปุ่ม Profile Chip
-                maxWidth: 150,
+        <ScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={{
+            paddingHorizontal: 18,
+            paddingTop: 46,
+            paddingBottom: 140, // [STEP 9.5] เพิ่มพื้นที่ล่างกันคีย์บอร์ดบัง
+          }}
+        >
+          <View style={{ gap: 14 }}>
+            {/* Header */}
+            <View
+              style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 7,
-                paddingVertical: 6,
-                paddingHorizontal: 8,
-                borderRadius: 999,
-                backgroundColor: "#ECFDF5",
-                borderWidth: 1,
-                borderColor: "#22C55E",
-              },
-            pressed && {
-                opacity: 0.8,
-                transform: [{ scale: 0.96 }],
-              },
-            ]}
-      >
-        {user?.user_metadata?.avatar_url ? (
-          <Image
-            source={{ uri: user.user_metadata.avatar_url }}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: "#DCFCE7",
+                justifyContent: "space-between",
+                gap: 10,
               }}
-      />
-        ) : (
-        <View
-          style={{
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: "#16A34A",
+            >
+              <View style={{ flexShrink: 1, maxWidth: user ? 130 : 220 }}>
+                <Text
+                  style={{
+                    // [STEP 4.3] ลดขนาดตัวอักษร เพื่อไม่ให้ชน Member/Logout
+                    fontSize: user ? 24 : 30,
+                    fontWeight: "900",
+                    color: "#111827",
+                  }}
+                  numberOfLines={1}
+                >
+                  🍌 BVision
+                </Text>
+
+                <Text
+                  style={{
+                    color: "#6B7280",
+                    marginTop: 4,
+                    // [STEP 4.3] ตอนเป็น Member ลด subtitle ไม่ให้กินพื้นที่
+                    fontSize: user ? 12 : 14,
+                    fontWeight: "700",
+                  }}
+                  numberOfLines={user ? 2 : 1}
+                >
+                  AI ตรวจความสุกของกล้วย
+                </Text>
+              </View>
+
+              {/* [STEP 4.2] ขวาบน: ถ้า Login แล้ว แสดง Member + Logout / ถ้ายังไม่ Login แสดง Login + Register */}
+              <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                {authLoading ? (
+                  <Text style={{ color: "#6B7280", fontWeight: "800" }}>
+                    Checking...
+                  </Text>
+                ) : user ? (
+                  <>
+                    <Pressable
+                      onPress={() => router.push("/profile" as any)}
+                      android_ripple={{ color: "#BBF7D0" }}
+                      style={({ pressed }) => [
+                        {
+                          // [STEP 8.2] เปลี่ยนกล่อง Member เป็นปุ่ม Profile Chip
+                          maxWidth: 150,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 7,
+                          paddingVertical: 6,
+                          paddingHorizontal: 8,
+                          borderRadius: 999,
+                          backgroundColor: "#ECFDF5",
+                          borderWidth: 1,
+                          borderColor: "#22C55E",
+                        },
+                        pressed && {
+                          opacity: 0.8,
+                          transform: [{ scale: 0.96 }],
+                        },
+                      ]}
+                    >
+                      {user?.user_metadata?.avatar_url ? (
+                        <Image
+                          source={{ uri: user.user_metadata.avatar_url }}
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 16,
+                            backgroundColor: "#DCFCE7",
+                          }}
+                        />
+                      ) : (
+                        <View
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 16,
+                            backgroundColor: "#16A34A",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: "#FFFFFF",
+                              fontWeight: "900",
+                              fontSize: 14,
+                            }}
+                          >
+                            {(user?.user_metadata?.display_name || "M")
+                              .slice(0, 1)
+                              .toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color: "#166534",
+                            fontWeight: "900",
+                            fontSize: 12,
+                          }}
+                        >
+                          {user?.user_metadata?.display_name || "Member"}
+                        </Text>
+
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color: "#15803D",
+                            fontWeight: "700",
+                            fontSize: 10,
+                          }}
+                        >
+                          โปรไฟล์
+                        </Text>
+                      </View>
+                    </Pressable>
+
+                    <Pressable
+                      // [STEP 4.2] กดแล้วออกจากระบบ
+                      onPress={handleLogout}
+                      android_ripple={{ color: "#FFCDD2" }} // [UI EFFECT] Android กดแล้วมี ripple
+                      style={({ pressed }) => [
+                        {
+                          // [STEP 4.3] ลดขนาดปุ่ม Logout ให้ Header สมดุล
+                          paddingVertical: 8,
+                          paddingHorizontal: 10,
+                          borderRadius: 999,
+                          backgroundColor: "#EF4444",
+
+                          // [UI EFFECT] เพิ่มเงาแดงเบา ๆ ให้ปุ่มดูมีมิติ
+                          shadowColor: "#EF4444",
+                          shadowOffset: { width: 0, height: 3 },
+                          shadowOpacity: 0.22,
+                          shadowRadius: 5,
+                          elevation: 3,
+                        },
+
+                        // [UI EFFECT] ตอนกด ปุ่มจะยุบ/จางลงนิด ๆ
+                        pressed && {
+                          opacity: 0.8,
+                          transform: [{ scale: 0.95 }],
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: "#FFFFFF",
+                          fontWeight: "900",
+                          fontSize: 13,
+                        }}
+                      >
+                        Logout
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Pressable
+                      onPress={() => router.push("/login" as any)}
+                      android_ripple={{ color: "#D6E9FF" }} // [UI EFFECT] Android กดแล้วมี ripple
+                      style={({ pressed }) => [
+                        {
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: "#007AFF",
+                          backgroundColor: "#FFFFFF",
+
+                          // [UI EFFECT] เพิ่มเงาให้ปุ่มดูมีมิติ
+                          shadowColor: "#007AFF",
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.12,
+                          shadowRadius: 4,
+                          elevation: 2,
+                        },
+
+                        // [UI EFFECT] ตอนกด ปุ่มจะยุบ/จางลงนิด ๆ
+                        pressed && {
+                          opacity: 0.75,
+                          transform: [{ scale: 0.96 }],
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: "#007AFF",
+                          fontWeight: "900",
+                          fontSize: 13,
+                        }}
+                      >
+                        Login
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => router.push("/register" as any)}
+                      android_ripple={{ color: "#4DA3FF" }} // [UI EFFECT] Android กดแล้วมี ripple
+                      style={({ pressed }) => [
+                        {
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderRadius: 999,
+                          backgroundColor: "#007AFF",
+
+                          // [UI EFFECT] เพิ่มเงาให้ปุ่ม Register ดูนูนขึ้น
+                          shadowColor: "#007AFF",
+                          shadowOffset: { width: 0, height: 3 },
+                          shadowOpacity: 0.25,
+                          shadowRadius: 5,
+                          elevation: 3,
+                        },
+
+                        // [UI EFFECT] ตอนกด ปุ่มจะยุบ/จางลงนิด ๆ
+                        pressed && {
+                          opacity: 0.82,
+                          transform: [{ scale: 0.96 }],
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: "#FFFFFF",
+                          fontWeight: "900",
+                          fontSize: 13,
+                        }}
+                      >
+                        Register
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
+              </View>
+            </View>
+
+            {/* Guide Card */}
+            <View
+              style={{
+                backgroundColor: "#FFF8E6",
+                borderRadius: 18,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: "#FDE68A",
                 alignItems: "center",
-                justifyContent: "center",
-          }}
-        >
-        <Text
-          style={{
-                color: "#FFFFFF",
-                fontWeight: "900",
-                fontSize: 14,
-          }}
-        >
-          {(user?.user_metadata?.display_name || "M")
-            .slice(0, 1)
-            .toUpperCase()}
-        </Text>
-      </View>
-    )}
-
-      <View style={{ flex: 1 }}>
-        <Text
-          numberOfLines={1}
-          style={{
-                color: "#166534",
-                fontWeight: "900",
-                fontSize: 12,
-          }}
-      >
-          {user?.user_metadata?.display_name || "Member"}
-        </Text>
-
-        <Text
-          numberOfLines={1}
-          style={{
-                color: "#15803D",
-                fontWeight: "700",
-                fontSize: 10,
-          }}
-        >
-          โปรไฟล์
-        </Text>
-      </View>
-      </Pressable>
-
-      <Pressable
-        // [STEP 4.2] กดแล้วออกจากระบบ
-      onPress={handleLogout}
-      android_ripple={{ color: "#FFCDD2" }} // [UI EFFECT] Android กดแล้วมี ripple
-      style={({ pressed }) => [
-        {
-          // [STEP 4.3] ลดขนาดปุ่ม Logout ให้ Header สมดุล
-          paddingVertical: 8,
-          paddingHorizontal: 10,
-          borderRadius: 999,
-          backgroundColor: "#EF4444",
-
-          // [UI EFFECT] เพิ่มเงาแดงเบา ๆ ให้ปุ่มดูมีมิติ
-          shadowColor: "#EF4444",
-          shadowOffset: { width: 0, height: 3 },
-          shadowOpacity: 0.22,
-          shadowRadius: 5,
-          elevation: 3,
-        },
-
-        // [UI EFFECT] ตอนกด ปุ่มจะยุบ/จางลงนิด ๆ
-        pressed && {
-          opacity: 0.8,
-          transform: [{ scale: 0.95 }],
-        },
-      ]}
-    >
-      <Text
-        style={{
-          color: "#FFFFFF",
-          fontWeight: "900",
-          fontSize: 13,
-      }}
-    >
-      Logout
-    </Text>
-    </Pressable>
-    </>
-    ) : (
-    <>
-      <Pressable
-        onPress={() => router.push("/login" as any)}
-        android_ripple={{ color: "#D6E9FF" }} // [UI EFFECT] Android กดแล้วมี ripple
-        style={({ pressed }) => [
-          {
-            paddingVertical: 8,
-            paddingHorizontal: 12,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: "#007AFF",
-            backgroundColor: "#FFFFFF",
-
-            // [UI EFFECT] เพิ่มเงาให้ปุ่มดูมีมิติ
-          shadowColor: "#007AFF",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.12,
-          shadowRadius: 4,
-          elevation: 2,
-          },
-
-          // [UI EFFECT] ตอนกด ปุ่มจะยุบ/จางลงนิด ๆ
-          pressed && {
-            opacity: 0.75,
-            transform: [{ scale: 0.96 }],
-          },
-        ]}
-      >
-        <Text
-          style={{
-            color: "#007AFF",
-            fontWeight: "900",
-            fontSize: 13,
-          }}
-        >
-          Login
-        </Text>
-  
-      </Pressable>
-
-      <Pressable
-        onPress={() => router.push("/register" as any)}
-        android_ripple={{ color: "#4DA3FF" }} // [UI EFFECT] Android กดแล้วมี ripple
-        style={({ pressed }) => [
-          {
-            paddingVertical: 8,
-            paddingHorizontal: 12,
-            borderRadius: 999,
-            backgroundColor: "#007AFF",
-
-            // [UI EFFECT] เพิ่มเงาให้ปุ่ม Register ดูนูนขึ้น
-            shadowColor: "#007AFF",
-            shadowOffset: { width: 0, height: 3 },
-            shadowOpacity: 0.25,
-            shadowRadius: 5,
-            elevation: 3,
-          },
-
-          // [UI EFFECT] ตอนกด ปุ่มจะยุบ/จางลงนิด ๆ
-          pressed && {
-            opacity: 0.82,
-            transform: [{ scale: 0.96 }],
-          },
-        ]}
-      >
-        <Text
-          style={{
-            color: "#FFFFFF",
-            fontWeight: "900",
-            fontSize: 13,
-        }}
-      >
-          Register
-        </Text>
-      </Pressable>
-          </>
-        )}
-        </View>
-        </View>
-
-        {/* Guide Card */}
-
-        <View
-          style={{
-            backgroundColor: "#FFF8E6",
-            borderRadius: 18,
-            padding: 16,
-            borderWidth: 1,
-            borderColor: "#FDE68A",
-            alignItems: "center",
-          }}
-        >
-          <Text
-            style={{
-              color: "#3B2A10",
-              fontSize: 18,
-              fontWeight: "900",
-              textAlign: "center",
-              lineHeight: 28,
-            }}
-          >
-            🍌 ถ่ายรูป/เลือกรูป → Detect →{"\n"}ดูผลความสุกของกล้วยรายลูก
-          </Text>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={{ gap: 12, marginTop: 4 }}>
-          <Pressable
-            onPress={checkBackend}
-            style={{
-              backgroundColor: "#EAF4FF",
-              borderRadius: 18,
-              padding: 16,
-              borderWidth: 1,
-              borderColor: "#BBD7FF",
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <View>
-              <Text style={{ color: "#007AFF", fontSize: 20, fontWeight: "900" }}>
-                ☁️ เช็ก Backend
-              </Text>
-              <Text style={{ color: "#64748B", marginTop: 3, fontWeight: "700" }}>
-                ตรวจสอบการเชื่อมต่อกับ Backend
+              }}
+            >
+              <Text
+                style={{
+                  color: "#3B2A10",
+                  fontSize: 18,
+                  fontWeight: "900",
+                  textAlign: "center",
+                  lineHeight: 28,
+                }}
+              >
+                🍌 ถ่ายรูป/เลือกรูป → Detect →{"\n"}ดูผลความสุกของกล้วยรายลูก
               </Text>
             </View>
 
-            <Text style={{ color: "#007AFF", fontSize: 28, fontWeight: "900" }}>
-              ›
-            </Text>
-          </Pressable>
-
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            <Pressable
-              onPress={takePhoto}
-              style={{
-                flex: 1,
-                backgroundColor: "#FFFFFF",
-                borderRadius: 18,
-                paddingVertical: 20,
-                alignItems: "center",
-                borderWidth: 1,
-                borderColor: "#E5E7EB",
-              }}
-            >
-              <Text style={{ color: "#16A34A", fontSize: 20, fontWeight: "900" }}>
-                📸 ถ่ายรูป
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={pickImage}
-              style={{
-                flex: 1,
-                backgroundColor: "#FFFFFF",
-                borderRadius: 18,
-                paddingVertical: 20,
-                alignItems: "center",
-                borderWidth: 1,
-                borderColor: "#E5E7EB",
-              }}
-            >
-              <Text style={{ color: "#4F46E5", fontSize: 20, fontWeight: "900" }}>
-                🖼 เลือกรูป
-              </Text>
-            </Pressable>
-          </View>
-
-          <Pressable
-            onPress={detect}
-            disabled={loading}
-            style={{
-              backgroundColor: loading ? "#86EFAC" : "#16A34A",
-              borderRadius: 20,
-              paddingVertical: 20,
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: "#FFFFFF", fontSize: 24, fontWeight: "900" }}>
-              {loading ? "กำลังทำงาน..." : "Detect 🍌"}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => router.push("/video-detect" as any)}
-            style={{
-              backgroundColor: "#111827",
-              borderRadius: 20,
-              paddingVertical: 18,
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "900" }}>
-              📹 ตรวจแบบวิดีโอ
-            </Text>
-          </Pressable>
-
-          {user && (
-          <Pressable
-            onPress={() => router.push("/history" as any)}
-            android_ripple={{ color: "#D1FAE5" }}
-            style={({ pressed }) => [
-          {
-            backgroundColor: "#ECFDF5",
-            borderRadius: 20,
-            paddingVertical: 18,
-            alignItems: "center",
-            borderWidth: 1,
-            borderColor: "#22C55E",
-          },
-            pressed && {
-              opacity: 0.8,
-              transform: [{ scale: 0.97 }],
-            },
-          ]}
-          >
-            <Text style={{ color: "#166534", fontSize: 22, fontWeight: "900" }}>
-              📜 ประวัติการตรวจ
-            </Text>
-          </Pressable>
-          )}
-        </View>
-
-        <View
-  style={{
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
-  }}
->
-  <Text style={{ fontWeight: "800", color: "#374151" }}>
-    🏷️ Guide:
-  </Text>
-
-  <Text style={{ color: "#15803D", fontWeight: "800" }}>Green=ดิบ</Text>
-  <Text style={{ color: "#B45309", fontWeight: "800" }}>• Breaker=ห่าม</Text>
-  <Text style={{ color: "#C2410C", fontWeight: "800" }}>• Ripe=สุก</Text>
-  <Text style={{ color: "#DC2626", fontWeight: "800" }}>• Overripe=งอม</Text>
-</View>
-
-        {!!statusText && (
-          <View
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              backgroundColor: "#F3F3F3",
-            }}
-          >
-            <Text style={{ fontWeight: "600" }}>{statusText}</Text>
-          </View>
-        )}
-
-        {!!errorMsg && (
-          <View
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              backgroundColor: "#FFF0F0",
-            }}
-          >
-            <Text style={{ color: "#B00020", fontWeight: "700" }}>
-              เกิดข้อผิดพลาด
-            </Text>
-            <Text style={{ color: "#B00020", marginTop: 6 }}>{errorMsg}</Text>
-          </View>
-        )}
-
-        {image && (
-          <>
-            <Text style={{ fontWeight: "700", fontSize: 16 }}>รูปต้นฉบับ</Text>
-            <Image
-              source={{ uri: image }}
-              style={{
-                width: "100%",
-                height: 280,
-                borderRadius: 12,
-                backgroundColor: "#F3F3F3",
-              }}
-              resizeMode="contain"
-            />
-          </>
-        )}
-
-        {annotatedUrl && (
-          <>
-            <Text style={{ fontWeight: "700", fontSize: 16 }}>
-              ผลลัพธ์รายลูก
-            </Text>
-            <Image
-              source={{ uri: annotatedUrl }}
-              style={{
-                width: "100%",
-                height: 340,
-                borderRadius: 12,
-                backgroundColor: "#F3F3F3",
-              }}
-              resizeMode="contain"
-            />
-          </>
-        )}
-
-        {summary && (
-          <View
-            style={{
-              padding: 14,
-              borderRadius: 14,
-              backgroundColor: "#F6F6F6",
-              gap: 6,
-            }}
-          >
-            <Text style={{ fontWeight: "800", fontSize: 18, marginBottom: 4 }}>
-              📊 สรุปผล
-            </Text>
-
-            <Text>• ตรวจเจอ: {summary.total} ลูก</Text>
-            <Text>• ดิบ: {summary.green} ลูก</Text>
-            <Text>• ห่าม: {summary.breaker} ลูก</Text>
-            <Text>• สุก: {summary.ripe} ลูก</Text>
-            <Text>• งอม: {summary.overripe} ลูก</Text>
-            <Text>• ระดับโดยรวม: {summary.overall}</Text>
-            <Text>• เวลา inference: {summary.ms} ms</Text>
-            <Text>
-              • ความมั่นใจตรวจจับสูงสุด: {summary.maxDetConf.toFixed(2)}
-            </Text>
-            <Text>
-              • ความมั่นใจความสุกสูงสุด: {summary.maxRipenessConf.toFixed(2)}
-            </Text>
-          </View>
-        )}
-
-        {summary && summary.detections.length > 0 && (
-          <View
-            style={{
-              padding: 14,
-              borderRadius: 14,
-              backgroundColor: "#FFFFFF",
-              borderWidth: 1,
-              borderColor: "#E5E5E5",
-              gap: 6,
-            }}
-          >
-            <Text style={{ fontWeight: "800", fontSize: 18, marginBottom: 4 }}>
-              🍌 รายละเอียดรายลูก
-            </Text>
-
-            {summary.detections.map((d: any) => (
-              <View
-                key={d.index}
+            {/* Action Buttons */}
+            <View style={{ gap: 12, marginTop: 4 }}>
+              <Pressable
+                onPress={checkBackend}
                 style={{
-                  paddingVertical: 6,
-                  borderBottomWidth: 1,
-                  borderBottomColor: "#EEEEEE",
+                  backgroundColor: "#EAF4FF",
+                  borderRadius: 18,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: "#BBD7FF",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
-                <Text style={{ fontWeight: "700" }}>ลูกที่ {d.index}</Text>
+                <View>
+                  <Text style={{ color: "#007AFF", fontSize: 20, fontWeight: "900" }}>
+                    ☁️ เช็ก Backend
+                  </Text>
+                  <Text style={{ color: "#64748B", marginTop: 3, fontWeight: "700" }}>
+                    ตรวจสอบการเชื่อมต่อกับ Backend
+                  </Text>
+                </View>
+
+                <Text style={{ color: "#007AFF", fontSize: 28, fontWeight: "900" }}>
+                  ›
+                </Text>
+              </Pressable>
+
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <Pressable
+                  onPress={takePhoto}
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: 18,
+                    paddingVertical: 20,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: "#E5E7EB",
+                  }}
+                >
+                  <Text style={{ color: "#16A34A", fontSize: 20, fontWeight: "900" }}>
+                    📸 ถ่ายรูป
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={pickImage}
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: 18,
+                    paddingVertical: 20,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: "#E5E7EB",
+                  }}
+                >
+                  <Text style={{ color: "#4F46E5", fontSize: 20, fontWeight: "900" }}>
+                    🖼 เลือกรูป
+                  </Text>
+                </Pressable>
+              </View>
+
+              <Pressable
+                onPress={detect}
+                disabled={loading}
+                style={{
+                  backgroundColor: loading ? "#86EFAC" : "#16A34A",
+                  borderRadius: 20,
+                  paddingVertical: 20,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#FFFFFF", fontSize: 24, fontWeight: "900" }}>
+                  {loading ? "กำลังทำงาน..." : "Detect 🍌"}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => router.push("/video-detect" as any)}
+                style={{
+                  backgroundColor: "#111827",
+                  borderRadius: 20,
+                  paddingVertical: 18,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "900" }}>
+                  📹 ตรวจแบบวิดีโอ
+                </Text>
+              </Pressable>
+
+              {user && (
+                <Pressable
+                  onPress={() => router.push("/history" as any)}
+                  android_ripple={{ color: "#D1FAE5" }}
+                  style={({ pressed }) => [
+                    {
+                      backgroundColor: "#ECFDF5",
+                      borderRadius: 20,
+                      paddingVertical: 18,
+                      alignItems: "center",
+                      borderWidth: 1,
+                      borderColor: "#22C55E",
+                    },
+                    pressed && {
+                      opacity: 0.8,
+                      transform: [{ scale: 0.97 }],
+                    },
+                  ]}
+                >
+                  <Text style={{ color: "#166534", fontSize: 22, fontWeight: "900" }}>
+                    📜 ประวัติการตรวจ
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            <View
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: 16,
+                paddingVertical: 12,
+                paddingHorizontal: 14,
+                borderWidth: 1,
+                borderColor: "#E5E7EB",
+                flexDirection: "row",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              <Text style={{ fontWeight: "800", color: "#374151" }}>
+                🏷️ Guide:
+              </Text>
+
+              <Text style={{ color: "#15803D", fontWeight: "800" }}>Green=ดิบ</Text>
+              <Text style={{ color: "#B45309", fontWeight: "800" }}>• Breaker=ห่าม</Text>
+              <Text style={{ color: "#C2410C", fontWeight: "800" }}>• Ripe=สุก</Text>
+              <Text style={{ color: "#DC2626", fontWeight: "800" }}>• Overripe=งอม</Text>
+            </View>
+
+            {!!statusText && (
+              <View
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: "#F3F3F3",
+                }}
+              >
+                <Text style={{ fontWeight: "600" }}>{statusText}</Text>
+              </View>
+            )}
+
+            {!!errorMsg && (
+              <View
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: "#FFF0F0",
+                }}
+              >
+                <Text style={{ color: "#B00020", fontWeight: "700" }}>
+                  เกิดข้อผิดพลาด
+                </Text>
+                <Text style={{ color: "#B00020", marginTop: 6 }}>{errorMsg}</Text>
+              </View>
+            )}
+
+            {image && (
+              <>
+                <Text style={{ fontWeight: "700", fontSize: 16 }}>รูปต้นฉบับ</Text>
+                <Image
+                  source={{ uri: image }}
+                  style={{
+                    width: "100%",
+                    height: 280,
+                    borderRadius: 12,
+                    backgroundColor: "#F3F3F3",
+                  }}
+                  resizeMode="contain"
+                />
+              </>
+            )}
+
+            {annotatedUrl && (
+              <>
+                <Text style={{ fontWeight: "700", fontSize: 16 }}>
+                  ผลลัพธ์รายลูก
+                </Text>
+                <Image
+                  source={{ uri: annotatedUrl }}
+                  style={{
+                    width: "100%",
+                    height: 340,
+                    borderRadius: 12,
+                    backgroundColor: "#F3F3F3",
+                  }}
+                  resizeMode="contain"
+                />
+              </>
+            )}
+
+            {summary && (
+              <View
+                style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  backgroundColor: "#F6F6F6",
+                  gap: 6,
+                }}
+              >
+                <Text style={{ fontWeight: "800", fontSize: 18, marginBottom: 4 }}>
+                  📊 สรุปผล
+                </Text>
+
+                <Text>• ตรวจเจอ: {summary.total} ลูก</Text>
+                <Text>• ดิบ: {summary.green} ลูก</Text>
+                <Text>• ห่าม: {summary.breaker} ลูก</Text>
+                <Text>• สุก: {summary.ripe} ลูก</Text>
+                <Text>• งอม: {summary.overripe} ลูก</Text>
+                <Text>• ระดับโดยรวม: {summary.overall}</Text>
+                <Text>• เวลา inference: {summary.ms} ms</Text>
                 <Text>
-                  ระดับ: {d.ripeness_th ?? d.ripeness ?? "-"} (
-                  {d.ripeness ?? "-"})
+                  • ความมั่นใจตรวจจับสูงสุด: {summary.maxDetConf.toFixed(2)}
                 </Text>
                 <Text>
-                  ความมั่นใจความสุก:{" "}
-                  {Number(d.ripeness_conf ?? 0).toFixed(2)}
-                </Text>
-                <Text>
-                  ความมั่นใจตรวจจับ:{" "}
-                  {Number(d.det_conf ?? d.conf ?? 0).toFixed(2)}
+                  • ความมั่นใจความสุกสูงสุด: {summary.maxRipenessConf.toFixed(2)}
                 </Text>
               </View>
-            ))}
+            )}
+
+            {summary && summary.detections.length > 0 && (
+              <View
+                style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  backgroundColor: "#FFFFFF",
+                  borderWidth: 1,
+                  borderColor: "#E5E5E5",
+                  gap: 6,
+                }}
+              >
+                <Text style={{ fontWeight: "800", fontSize: 18, marginBottom: 4 }}>
+                  🍌 รายละเอียดรายลูก
+                </Text>
+
+                {summary.detections.map((d: any, index: number) => (
+                  <View
+                    key={`${d.index ?? index}-${index}`}
+                    style={{
+                      paddingVertical: 6,
+                      borderBottomWidth: 1,
+                      borderBottomColor: "#EEEEEE",
+                    }}
+                  >
+                    <Text style={{ fontWeight: "700" }}>ลูกที่ {d.index ?? index + 1}</Text>
+                    <Text>
+                      ระดับ: {d.ripeness_th ?? d.ripeness ?? "-"} (
+                      {d.ripeness ?? "-"})
+                    </Text>
+                    <Text>
+                      ความมั่นใจความสุก:{" "}
+                      {Number(d.ripeness_conf ?? 0).toFixed(2)}
+                    </Text>
+                    <Text>
+                      ความมั่นใจตรวจจับ:{" "}
+                      {Number(d.det_conf ?? d.conf ?? 0).toFixed(2)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* [STEP 11] ให้คะแนน + คอมเมนต์รายลูกบนหน้า Home หลัง Detect */}
+            {scanDetails.length > 0 && (
+              <View
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 18,
+                  padding: 14,
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                  gap: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 22,
+                    fontWeight: "900",
+                    color: "#111827",
+                  }}
+                >
+                  ⭐ ให้คะแนนและคอมเมนต์รายลูก
+                </Text>
+
+                <Text
+                  style={{
+                    color: "#6B7280",
+                    fontWeight: "700",
+                  }}
+                >
+                  เลือกดาวและเขียนคอมเมนต์แยกตามกล้วยแต่ละลูกที่ AI ตรวจเจอ
+                </Text>
+
+                {scanDetails.map((row, index) => {
+                  const key = String(row.id ?? index);
+                  const bananaNo = Number(row.banana_index ?? index + 1);
+                  const isSavingThisRow = savingBananaId === key;
+                  const confidenceText = formatConfidence(row.confidence);
+                  const label = row.ripeness_th ?? row.ripeness_label ?? "-";
+
+                  return (
+                    <View
+                      key={key}
+                      style={{
+                        backgroundColor: "#F9FAFB",
+                        borderRadius: 16,
+                        padding: 12,
+                        borderWidth: 1,
+                        borderColor: "#E5E7EB",
+                        gap: 10,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 18,
+                            fontWeight: "900",
+                            color: "#111827",
+                          }}
+                        >
+                          กล้วยลูกที่ {bananaNo}
+                        </Text>
+
+                        <View
+                          style={{
+                            paddingVertical: 6,
+                            paddingHorizontal: 10,
+                            borderRadius: 999,
+                            backgroundColor: "#FFFFFF",
+                            borderWidth: 1,
+                            borderColor: "#E5E7EB",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontWeight: "900",
+                              color: getRipenessColor(label),
+                            }}
+                          >
+                            {label}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text
+                        style={{
+                          color: "#374151",
+                          fontWeight: "800",
+                        }}
+                      >
+                        ความมั่นใจความสุก: {confidenceText}
+                      </Text>
+
+                      <Text
+                        style={{
+                          color: "#111827",
+                          fontWeight: "900",
+                          fontSize: 15,
+                        }}
+                      >
+                        ⭐ ให้คะแนนกล้วยลูกนี้
+                      </Text>
+
+                      <StarRating
+                        value={bananaRatings[key] ?? 0}
+                        disabled={isSavingThisRow}
+                        onChange={(value) => {
+                          setBananaRatings((prev) => ({
+                            ...prev,
+                            [key]: value,
+                          }));
+                        }}
+                      />
+
+                      <Text
+                        style={{
+                          color: "#111827",
+                          fontWeight: "900",
+                          fontSize: 15,
+                        }}
+                      >
+                        📝 คอมเมนต์รายลูก
+                      </Text>
+
+                      <TextInput
+                        value={bananaComments[key] ?? ""}
+                        onChangeText={(text) => {
+                          setBananaComments((prev) => ({
+                            ...prev,
+                            [key]: text,
+                          }));
+                        }}
+                        placeholder={`เช่น กล้วยลูกที่ ${bananaNo} ควรเป็นสุก ไม่ใช่ห่าม`}
+                        placeholderTextColor="#9CA3AF"
+                        multiline
+                        style={{
+                          minHeight: 80,
+                          backgroundColor: "#FFFFFF",
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: "#D1D5DB",
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          color: "#111827",
+                          fontWeight: "700",
+                          textAlignVertical: "top",
+                        }}
+                      />
+
+                      {!!row.user_comment && (
+                        <Text
+                          style={{
+                            color: "#6B7280",
+                            fontWeight: "700",
+                            fontSize: 12,
+                          }}
+                        >
+                          คอมเมนต์ล่าสุด: {row.user_comment}
+                        </Text>
+                      )}
+
+                      {!!row.user_rating && (
+                        <Text
+                          style={{
+                            color: "#6B7280",
+                            fontWeight: "700",
+                            fontSize: 12,
+                          }}
+                        >
+                          คะแนนล่าสุด: {row.user_rating} ดาว
+                        </Text>
+                      )}
+
+                      {!!row.comment_updated_at && (
+                        <Text
+                          style={{
+                            color: "#9CA3AF",
+                            fontWeight: "700",
+                            fontSize: 12,
+                          }}
+                        >
+                          อัปเดตล่าสุด: {formatDate(row.comment_updated_at)}
+                        </Text>
+                      )}
+
+                      <Pressable
+                        onPress={() => handleSaveBananaFeedback(row, index)}
+                        disabled={isSavingThisRow}
+                        style={({ pressed }) => [
+                          {
+                            backgroundColor: isSavingThisRow ? "#93C5FD" : "#007AFF",
+                            borderRadius: 12,
+                            paddingVertical: 12,
+                            alignItems: "center",
+                          },
+                          pressed &&
+                            !isSavingThisRow && {
+                              opacity: 0.8,
+                              transform: [{ scale: 0.97 }],
+                            },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: "#FFFFFF",
+                            fontWeight: "900",
+                          }}
+                        >
+                          {isSavingThisRow ? "กำลังบันทึก..." : "บันทึกคอมเมนต์"}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            <Pressable onPress={() => setShowDebug((v) => !v)}>
+              <Text
+                style={{
+                  textDecorationLine: "underline",
+                  color: "#0066CC",
+                  fontWeight: "700",
+                }}
+              >
+                {showDebug ? "ซ่อนรายละเอียด (Debug)" : "ดูรายละเอียด (Debug)"}
+              </Text>
+            </Pressable>
+
+            {showDebug && result && (
+              <View
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: "#111",
+                }}
+              >
+                <Text style={{ color: "#fff", fontFamily: "monospace" }}>
+                  {JSON.stringify(result, null, 2)}
+                </Text>
+              </View>
+            )}
           </View>
-        )}
-
-    {/* [STEP 9] กล่องให้คะแนนดาว + Feedback
-    จะแสดงเฉพาะหลัง Detect สำเร็จและ Backend คืน scan_id มาแล้ว
-    scan_id ใช้ผูก Feedback กับผลตรวจครั้งนั้น */}
-    <FeedbackCard
-
-      // [STEP 5.4 FIX] บังคับให้ FeedbackCard สร้างใหม่เมื่อ scan/user เปลี่ยน
-      key={`${result?.scan_id ?? "no-scan"}-${user?.id ?? "guest"}`}
-      apiBase={API_BASE}
-      scanId={result?.scan_id}
-
-      // [STEP 5.4] ส่ง user id ให้ FeedbackCard ถ้า Login อยู่
-      userId={user?.id ?? null}
-
-      // [STEP 5.4] ถ้าไม่มี user จะถือเป็น guest
-      guestId="guest"
-    />
-
-  <Pressable onPress={() => setShowDebug((v) => !v)}>
-    <Text
-      style={{
-        textDecorationLine: "underline",
-        color: "#0066CC",
-        fontWeight: "700",
-      }}
-  >
-        {showDebug ? "ซ่อนรายละเอียด (Debug)" : "ดูรายละเอียด (Debug)"}
-    </Text>
-  </Pressable>
-
-        <Pressable onPress={() => setShowDebug((v) => !v)}>
-          <Text
-            style={{
-              textDecorationLine: "underline",
-              color: "#0066CC",
-              fontWeight: "700",
-            }}
-          >
-            
-          </Text>
-        </Pressable>
-
-        {showDebug && result && (
-          <View
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              backgroundColor: "#111",
-            }}
-          >
-            <Text style={{ color: "#fff", fontFamily: "monospace" }}>
-              {JSON.stringify(result, null, 2)}
-            </Text>
-          </View>
-        )}
-      </View>
-    </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

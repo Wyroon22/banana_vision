@@ -127,12 +127,17 @@ class YOLOService:
         detect_path = model_path or str(DEFAULT_DETECT_MODEL_PATH)
         cls_path = cls_model_path or str(DEFAULT_CLS_MODEL_PATH)
 
+
+        #นำไฟล์ที่เทรนแล้ว โหลดเข้าหน่วยความจำใน RAM
         print(f"[YOLOService] Loading detection model: {detect_path}")
         self.detect_model = YOLO(detect_path)
 
+
+        #นำไฟล์ที่เทรนแล้ว โหลดเข้าหน่วยความจำใน RAM
         print(f"[YOLOService] Loading classification model: {cls_path}")
         self.cls_model = YOLO(cls_path)
-
+    
+    #รับภาพจากมือถือเข้าสู่ระบบ AI
     def predict(self, image_bgr: np.ndarray, conf: float = 0.25) -> Dict[str, Any]:
         """
         Pipeline:
@@ -147,6 +152,7 @@ class YOLOService:
 
         h, w = image_bgr.shape[:2]
 
+        # AI Detection ตัวแรก ตรวจจับตำแหน่ง
         results = self.detect_model.predict(
             source=image_bgr,
             conf=conf,
@@ -177,12 +183,14 @@ class YOLOService:
                 x2_i = min(w, int(x2))
                 y2_i = min(h, int(y2))
 
+
+                #ตัดภาพเฉพาะลูกกล้วย จากภาพหวีให้เหลือทีละลูก
                 crop = image_bgr[y1_i:y2_i, x1_i:x2_i]
 
                 if crop.size == 0:
                     continue
 
-                # Model 2 classify ความสุกจาก crop รายลูก
+                # Model 2 classify ความสุกจาก crop รายลูก วิเคราะห์ระดับความสุกของกล้วยทีละลูก
                 cls_result = self.cls_model.predict(
                     source=crop,
                     imgsz=224,
@@ -192,6 +200,7 @@ class YOLOService:
                 probs = cls_result.probs
                 top1_idx = int(probs.top1)
                 ripeness = cls_result.names[top1_idx]
+                #ความมั่นใจของ AI ในการจำแนกระดับความสุก
                 ripeness_conf = float(probs.top1conf)
 
                 ripeness_th = THAI_LABELS.get(ripeness, ripeness)
@@ -274,6 +283,7 @@ class YOLOService:
             d.pop("_center_y", None)
             d.pop("_box_h", None)
 
+        # นับจำนวนกล้วยแต่ละระดับ
         summary = {
             "green": sum(1 for d in detections if d["ripeness"] == "green"),
             "breaker": sum(1 for d in detections if d["ripeness"] == "breaker"),

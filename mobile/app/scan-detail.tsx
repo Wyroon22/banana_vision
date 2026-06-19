@@ -119,6 +119,8 @@ function getRipenessColor(label: string) {
   return "#111827";
 }
 
+
+// แปลงค่า confidence จากฐานข้อมูลเช่น 0.92 ให้เป็บ 92%
 function getConfidence(row: any) {
   const value = pickNumber(
     row,
@@ -641,7 +643,7 @@ export default function ScanDetailScreen() {
             {details.map((row, index) => {
               const label = getRipenessLabel(row);
               const labelColor = getRipenessColor(label);
-              const confidence = getConfidence(row);
+              const confidence = getConfidence(row); //ดึงค่าความมั่นใจของ AI จากข้อมูลกล้วยแต่ละลูก
               const bboxText = getBBoxText(row);
               const commentKey = String(row.id ?? index);
               const isSavingThisRow = savingCommentId === commentKey;
@@ -696,7 +698,8 @@ export default function ScanDetailScreen() {
                       </Text>
                     </View>
                   </View>
-
+                  
+                  {/* แสดงค่าความมั่นใจของ AI เป็น เปอร์เซ็นต์ */}
                   <Text
                     style={{
                       color: "#374151",
