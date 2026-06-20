@@ -224,6 +224,12 @@ export default function HomeScreen() {
   const [zoomImageUri, setZoomImageUri] = useState<string | null>(null);
   const [zoomImageTitle, setZoomImageTitle] = useState("");
 
+  // [STEP 12.1] เก็บรูปที่เลือกหลายใบจาก Gallery
+  // ตอนนี้ Detect จะยังตรวจเฉพาะรูปหลักที่อยู่ใน state image ก่อน
+  const [selectedImages, setSelectedImages] = useState<
+    { id: string; uri: string }[]
+  >([]);
+
   // [STEP 11] เก็บ feedback รายลูกบนหน้า Home หลัง Detect
   const [scanDetails, setScanDetails] = useState<any[]>([]);
   const [bananaComments, setBananaComments] = useState<Record<string, string>>({});
@@ -272,6 +278,7 @@ export default function HomeScreen() {
         setStatusText("");
         setErrorMsg("");
         setShowDebug(false);
+        setSelectedImages([]);
         setScanDetails([]);
         setBananaComments({});
         setBananaRatings({});
@@ -375,6 +382,7 @@ export default function HomeScreen() {
   // กันรูปหรือผลตรวจของ Member ค้างไปโผล่ตอน Guest
   const clearScanState = () => {
     setImage(null);
+    setSelectedImages([]);
     setResult(null);
     setAnnotatedUrl(null);
     setStatusText("");
@@ -401,21 +409,42 @@ export default function HomeScreen() {
     });
 
     if (!shot.canceled) {
-      setImage(shot.assets[0].uri);
+      const uri = shot.assets[0].uri;
+
+      setImage(uri);
+      setSelectedImages([
+        {
+          id: `${Date.now()}-camera`,
+          uri,
+        },
+      ]);
     }
   };
 
-  // 🖼 เลือกรูป
+  // 🖼 เลือกรูปหลายรูป
   const pickImage = async () => {
     resetState();
 
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 1,
+
+      // [STEP 12.1] ให้เลือกหลายรูปจาก Gallery ได้
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
     });
 
     if (!picked.canceled) {
-      setImage(picked.assets[0].uri);
+      const images = picked.assets.map((asset, index) => ({
+        id: `${Date.now()}-${index}`,
+        uri: asset.uri,
+      }));
+
+      setSelectedImages(images);
+
+      // [STEP 12.1] ตั้งรูปแรกเป็นรูปหลักก่อน
+      // Detect เดิมจะยังตรวจจากรูปหลักนี้
+      setImage(images[0]?.uri ?? null);
     }
   };
 
@@ -1067,6 +1096,99 @@ export default function HomeScreen() {
                   เกิดข้อผิดพลาด
                 </Text>
                 <Text style={{ color: "#B00020", marginTop: 6 }}>{errorMsg}</Text>
+              </View>
+            )}
+
+            {/* [STEP 12.1] Preview รูปที่เลือกหลายใบ */}
+            {selectedImages.length > 0 && (
+              <View style={{ gap: 10 }}>
+                <Text
+                  style={{
+                    fontWeight: "900",
+                    fontSize: 18,
+                    color: "#111827",
+                  }}
+                >
+                  รูปที่เลือกทั้งหมด ({selectedImages.length})
+                </Text>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 10 }}
+                >
+                  {selectedImages.map((item, index) => {
+                    const isActive = image === item.uri;
+
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onPress={() => {
+                          setImage(item.uri);
+                          resetState();
+                          setZoomImageUri(item.uri);
+                          setZoomImageTitle(`รูปที่ ${index + 1}`);
+                        }}
+                        style={({ pressed }) => [
+                          {
+                            width: 110,
+                            height: 140,
+                            borderRadius: 14,
+                            overflow: "hidden",
+                            backgroundColor: "#F3F4F6",
+                            borderWidth: isActive ? 3 : 1,
+                            borderColor: isActive ? "#16A34A" : "#E5E7EB",
+                          },
+                          pressed && {
+                            opacity: 0.85,
+                            transform: [{ scale: 0.97 }],
+                          },
+                        ]}
+                      >
+                        <Image
+                          source={{ uri: item.uri }}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                          }}
+                          resizeMode="cover"
+                        />
+
+                        <View
+                          style={{
+                            position: "absolute",
+                            left: 6,
+                            top: 6,
+                            backgroundColor: isActive ? "#16A34A" : "rgba(17,24,39,0.75)",
+                            borderRadius: 999,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: "#FFFFFF",
+                              fontWeight: "900",
+                              fontSize: 12,
+                            }}
+                          >
+                            {index + 1}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                <Text
+                  style={{
+                    color: "#6B7280",
+                    fontWeight: "700",
+                    textAlign: "center",
+                  }}
+                >
+                  แตะรูปเพื่อเลือกเป็นรูปหลักและซูมดูภาพ 🔍
+                </Text>
               </View>
             )}
 
