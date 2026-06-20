@@ -207,6 +207,20 @@ function formatDate(value?: string | null) {
   }
 }
 
+type BatchDetectResult = {
+  id: string;
+  order: number;
+  sourceUri: string;
+  ok: boolean;
+  scanId?: string;
+  annotatedUrl?: string | null;
+  count?: number;
+  inferenceMs?: number;
+  summary?: any;
+  rawResult?: any;
+  error?: string;
+};
+
 export default function HomeScreen() {
   const [image, setImage] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
@@ -229,6 +243,11 @@ export default function HomeScreen() {
   const [selectedImages, setSelectedImages] = useState<
     { id: string; uri: string }[]
   >([]);
+
+  // [STEP 12.2] ผลลัพธ์ Detect หลายรูป
+  const [batchResults, setBatchResults] = useState<BatchDetectResult[]>([]);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchStatusText, setBatchStatusText] = useState("");
 
   // [STEP 11] เก็บ feedback รายลูกบนหน้า Home หลัง Detect
   const [scanDetails, setScanDetails] = useState<any[]>([]);
@@ -279,6 +298,9 @@ export default function HomeScreen() {
         setErrorMsg("");
         setShowDebug(false);
         setSelectedImages([]);
+        setBatchResults([]);
+        setBatchLoading(false);
+        setBatchStatusText("");
         setScanDetails([]);
         setBananaComments({});
         setBananaRatings({});
@@ -376,6 +398,11 @@ export default function HomeScreen() {
     setBananaComments({});
     setBananaRatings({});
     setSavingBananaId(null);
+
+    // [STEP 12.2] เคลียร์ผล Detect หลายรูปเก่า
+    setBatchResults([]);
+    setBatchLoading(false);
+    setBatchStatusText("");
   };
 
   // [STEP 5 FIX] เคลียร์ข้อมูล scan ทั้งหมดเมื่อเปลี่ยน user / logout
@@ -392,6 +419,9 @@ export default function HomeScreen() {
     setBananaComments({});
     setBananaRatings({});
     setSavingBananaId(null);
+    setBatchResults([]);
+    setBatchLoading(false);
+    setBatchStatusText("");
   };
 
   // 📸 ถ่ายรูป
@@ -573,6 +603,121 @@ export default function HomeScreen() {
       );
     } finally {
       setSavingBananaId(null);
+    }
+  };
+
+  // [STEP 12.2] Detect รูปเดียวสำหรับใช้ใน Batch Detect
+  const detectSingleImageForBatch = async (
+    uri: string,
+    order: number
+  ): Promise<BatchDetectResult> => {
+    try {
+      const converted = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: TARGET_WIDTH } }],
+        {
+          compress: 0.85,
+          format: ImageManipulator.SaveFormat.JPEG,
+        }
+      );
+
+      const formData = new FormData();
+
+      formData.append("file", {
+        uri: converted.uri,
+        name: `banana-${order}.jpg`,
+        type: "image/jpeg",
+      } as any);
+
+      if (user?.id) {
+        formData.append("user_id", user.id);
+      } else {
+        formData.append("guest_id", "guest");
+      }
+
+      const res = await fetch(`${API_BASE}/detect`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.detail ?? `Detect รูปที่ ${order} ไม่สำเร็จ`);
+      }
+
+      const resultUrl = json?.result_url
+        ? `${API_BASE}${json.result_url}?t=${Date.now()}-${order}`
+        : null;
+
+      return {
+        id: `${Date.now()}-${order}`,
+        order,
+        sourceUri: uri,
+        ok: true,
+        scanId: json?.scan_id,
+        annotatedUrl: resultUrl,
+        count:
+          json?.count ??
+          json?.total_detections ??
+          json?.detections?.length ??
+          0,
+        inferenceMs: json?.inference_ms ?? 0,
+        summary: json?.summary ?? null,
+        rawResult: json,
+      };
+    } catch (err: any) {
+      return {
+        id: `${Date.now()}-${order}-error`,
+        order,
+        sourceUri: uri,
+        ok: false,
+        error: err?.message || "Detect ไม่สำเร็จ",
+      };
+    }
+  };
+
+  // [STEP 12.2] Detect รูปที่เลือกทั้งหมดแบบแยก scan_id ทีละรูป
+  const detectAllSelectedImages = async () => {
+    if (selectedImages.length === 0) {
+      Alert.alert("ยังไม่มีรูป", "กรุณาเลือกรูปก่อน");
+      return;
+    }
+
+    try {
+      setBatchLoading(true);
+      setBatchResults([]);
+      setErrorMsg("");
+      setStatusText("");
+      setBatchStatusText(`กำลังตรวจรูปทั้งหมด ${selectedImages.length} รูป...`);
+
+      // เคลียร์ผลเดี่ยวเก่า แต่ไม่ล้าง selectedImages
+      setResult(null);
+      setAnnotatedUrl(null);
+      setScanDetails([]);
+      setBananaComments({});
+      setBananaRatings({});
+      setSavingBananaId(null);
+      setShowDebug(false);
+
+      for (let i = 0; i < selectedImages.length; i += 1) {
+        const item = selectedImages[i];
+
+        setBatchStatusText(
+          `กำลังตรวจรูปที่ ${i + 1} จาก ${selectedImages.length}...`
+        );
+
+        const batchResult = await detectSingleImageForBatch(item.uri, i + 1);
+
+        setBatchResults((prev) => [...prev, batchResult]);
+      }
+
+      setBatchStatusText("✅ ตรวจครบทุกภาพแล้ว");
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Detect หลายรูปไม่สำเร็จ");
+      setBatchStatusText("❌ Detect หลายรูปไม่สำเร็จ");
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -995,9 +1140,9 @@ export default function HomeScreen() {
 
               <Pressable
                 onPress={detect}
-                disabled={loading}
+                disabled={loading || batchLoading}
                 style={{
-                  backgroundColor: loading ? "#86EFAC" : "#16A34A",
+                  backgroundColor: loading || batchLoading ? "#86EFAC" : "#16A34A",
                   borderRadius: 20,
                   paddingVertical: 20,
                   alignItems: "center",
@@ -1007,6 +1152,33 @@ export default function HomeScreen() {
                   {loading ? "กำลังทำงาน..." : "Detect 🍌"}
                 </Text>
               </Pressable>
+
+              {selectedImages.length > 1 && (
+                <Pressable
+                  onPress={detectAllSelectedImages}
+                  disabled={loading || batchLoading}
+                  style={({ pressed }) => [
+                    {
+                      backgroundColor: batchLoading ? "#FDBA74" : "#F97316",
+                      borderRadius: 20,
+                      paddingVertical: 18,
+                      alignItems: "center",
+                    },
+                    pressed &&
+                      !loading &&
+                      !batchLoading && {
+                        opacity: 0.85,
+                        transform: [{ scale: 0.97 }],
+                      },
+                  ]}
+                >
+                  <Text style={{ color: "#FFFFFF", fontSize: 21, fontWeight: "900" }}>
+                    {batchLoading
+                      ? "กำลัง Detect หลายรูป..."
+                      : `Detect รูปทั้งหมด (${selectedImages.length}) 🍌`}
+                  </Text>
+                </Pressable>
+              )}
 
               <Pressable
                 onPress={() => router.push("/video-detect" as any)}
@@ -1081,6 +1253,22 @@ export default function HomeScreen() {
                 }}
               >
                 <Text style={{ fontWeight: "600" }}>{statusText}</Text>
+              </View>
+            )}
+
+            {!!batchStatusText && (
+              <View
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: "#FFF7ED",
+                  borderWidth: 1,
+                  borderColor: "#FDBA74",
+                }}
+              >
+                <Text style={{ color: "#9A3412", fontWeight: "800" }}>
+                  {batchStatusText}
+                </Text>
               </View>
             )}
 
@@ -1352,6 +1540,179 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                 ))}
+              </View>
+            )}
+
+            {/* [STEP 12.2] ผลลัพธ์ Detect หลายรูป */}
+            {batchResults.length > 0 && (
+              <View
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 18,
+                  padding: 14,
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                  gap: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 22,
+                    fontWeight: "900",
+                    color: "#111827",
+                  }}
+                >
+                  🍌 ผลลัพธ์ Detect หลายรูป
+                </Text>
+
+                <Text
+                  style={{
+                    color: "#6B7280",
+                    fontWeight: "700",
+                  }}
+                >
+                  แต่ละรูปถูกบันทึกเป็น scan_id แยกกัน กดดูรายละเอียดเพื่อดูรายลูกของรูปนั้น
+                </Text>
+
+                {batchResults.map((item) => {
+                  const green = Number(item.summary?.green ?? 0);
+                  const breaker = Number(item.summary?.breaker ?? 0);
+                  const ripe = Number(item.summary?.ripe ?? 0);
+                  const overripe = Number(item.summary?.overripe ?? 0);
+
+                  return (
+                    <View
+                      key={item.id}
+                      style={{
+                        backgroundColor: "#F9FAFB",
+                        borderRadius: 16,
+                        padding: 12,
+                        borderWidth: 1,
+                        borderColor: item.ok ? "#BBF7D0" : "#FCA5A5",
+                        gap: 10,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 18,
+                          fontWeight: "900",
+                          color: "#111827",
+                        }}
+                      >
+                        รูปที่ {item.order}
+                      </Text>
+
+                      {item.ok ? (
+                        <>
+                          {item.annotatedUrl && (
+                            <Pressable
+                              onPress={() => {
+                                setZoomImageUri(item.annotatedUrl ?? null);
+                                setZoomImageTitle(`ผลลัพธ์รูปที่ ${item.order}`);
+                              }}
+                              style={({ pressed }) => [
+                                {
+                                  borderRadius: 12,
+                                  overflow: "hidden",
+                                  backgroundColor: "#F3F4F6",
+                                },
+                                pressed && {
+                                  opacity: 0.85,
+                                  transform: [{ scale: 0.99 }],
+                                },
+                              ]}
+                            >
+                              <Image
+                                source={{ uri: item.annotatedUrl }}
+                                style={{
+                                  width: "100%",
+                                  height: 260,
+                                  borderRadius: 12,
+                                  backgroundColor: "#F3F4F6",
+                                }}
+                                resizeMode="contain"
+                              />
+                            </Pressable>
+                          )}
+
+                          <Text style={{ color: "#374151", fontWeight: "800" }}>
+                            ตรวจเจอ: {item.count ?? 0} ลูก • {item.inferenceMs ?? 0} ms
+                          </Text>
+
+                          <Text style={{ color: "#6B7280", fontWeight: "700" }}>
+                            ดิบ {green} • ห่าม {breaker} • สุก {ripe} • งอม {overripe}
+                          </Text>
+
+                          <View style={{ flexDirection: "row", gap: 10 }}>
+                            <Pressable
+                              onPress={() => {
+                                setImage(item.sourceUri);
+                                setResult(item.rawResult ?? null);
+                                setAnnotatedUrl(item.annotatedUrl ?? null);
+                                setStatusText(
+                                  `เปิดผลลัพธ์รูปที่ ${item.order} • พบ ${item.count ?? 0} ลูก`
+                                );
+
+                                if (item.scanId) {
+                                  loadScanDetailsForFeedback(item.scanId);
+                                }
+                              }}
+                              style={({ pressed }) => [
+                                {
+                                  flex: 1,
+                                  backgroundColor: "#16A34A",
+                                  borderRadius: 12,
+                                  paddingVertical: 12,
+                                  alignItems: "center",
+                                },
+                                pressed && {
+                                  opacity: 0.85,
+                                  transform: [{ scale: 0.97 }],
+                                },
+                              ]}
+                            >
+                              <Text style={{ color: "#FFFFFF", fontWeight: "900" }}>
+                                เปิดเป็นรูปหลัก
+                              </Text>
+                            </Pressable>
+
+                            {!!item.scanId && (
+                              <Pressable
+                                onPress={() =>
+                                  router.push({
+                                    pathname: "/scan-detail",
+                                    params: { scanId: item.scanId },
+                                  } as any)
+                                }
+                                style={({ pressed }) => [
+                                  {
+                                    flex: 1,
+                                    backgroundColor: "#111827",
+                                    borderRadius: 12,
+                                    paddingVertical: 12,
+                                    alignItems: "center",
+                                  },
+                                  pressed && {
+                                    opacity: 0.85,
+                                    transform: [{ scale: 0.97 }],
+                                  },
+                                ]}
+                              >
+                                <Text style={{ color: "#FFFFFF", fontWeight: "900" }}>
+                                  ดูรายละเอียด
+                                </Text>
+                              </Pressable>
+                            )}
+                          </View>
+                        </>
+                      ) : (
+                        <Text style={{ color: "#B91C1C", fontWeight: "800" }}>
+                          ❌ {item.error}
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
               </View>
             )}
 
