@@ -9,6 +9,8 @@ import {
   Platform,
   Alert,
   TextInput,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { useEffect, useMemo, useState } from "react";
 import { router } from "expo-router";
@@ -20,6 +22,112 @@ import * as ImageManipulator from "expo-image-manipulator";
 
 const API_BASE = "http://172.20.10.2:8000";
 const TARGET_WIDTH = 1280; // ✅ resize กันไฟล์ใหญ่เกิน
+
+function ZoomImageModal({
+  uri,
+  title,
+  onClose,
+}: {
+  uri: string | null;
+  title: string;
+  onClose: () => void;
+}) {
+  const { width, height } = Dimensions.get("window");
+
+  return (
+    <Modal
+      visible={!!uri}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.95)",
+          paddingTop: 50,
+        }}
+      >
+        <View
+          style={{
+            paddingHorizontal: 18,
+            paddingBottom: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text
+            numberOfLines={1}
+            style={{
+              color: "#FFFFFF",
+              fontSize: 18,
+              fontWeight: "900",
+              flex: 1,
+              marginRight: 12,
+            }}
+          >
+            {title}
+          </Text>
+
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => [
+              {
+                backgroundColor: "#FFFFFF",
+                borderRadius: 999,
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+              },
+              pressed && {
+                opacity: 0.75,
+                transform: [{ scale: 0.96 }],
+              },
+            ]}
+          >
+            <Text style={{ color: "#111827", fontWeight: "900" }}>ปิด</Text>
+          </Pressable>
+        </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            minHeight: height - 90,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          maximumZoomScale={4}
+          minimumZoomScale={1}
+          centerContent
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+        >
+          {uri && (
+            <Image
+              source={{ uri }}
+              style={{
+                width,
+                height: height - 120,
+              }}
+              resizeMode="contain"
+            />
+          )}
+        </ScrollView>
+
+        <Text
+          style={{
+            color: "#D1D5DB",
+            textAlign: "center",
+            fontWeight: "700",
+            paddingBottom: 18,
+          }}
+        >
+          บีบนิ้วเพื่อซูม / ลากเพื่อดูรายละเอียด 🔍
+        </Text>
+      </View>
+    </Modal>
+  );
+}
 
 function StarRating({
   value,
@@ -113,6 +221,8 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [showDebug, setShowDebug] = useState(false);
+  const [zoomImageUri, setZoomImageUri] = useState<string | null>(null);
+  const [zoomImageTitle, setZoomImageTitle] = useState("");
 
   // [STEP 11] เก็บ feedback รายลูกบนหน้า Home หลัง Detect
   const [scanDetails, setScanDetails] = useState<any[]>([]);
@@ -963,36 +1073,94 @@ export default function HomeScreen() {
             {image && (
               <>
                 <Text style={{ fontWeight: "700", fontSize: 16 }}>รูปต้นฉบับ</Text>
-                <Image
-                  source={{ uri: image }}
-                  style={{
-                    width: "100%",
-                    height: 280,
-                    borderRadius: 12,
-                    backgroundColor: "#F3F3F3",
-                  }}
-                  resizeMode="contain"
-                />
-              </>
-            )}
 
-            {annotatedUrl && (
-              <>
-                <Text style={{ fontWeight: "700", fontSize: 16 }}>
-                  ผลลัพธ์รายลูก
-                </Text>
-                <Image
-                  source={{ uri: annotatedUrl }}
-                  style={{
-                    width: "100%",
-                    height: 340,
+            <Pressable
+                  onPress={() => {
+                    setZoomImageUri(image);
+                    setZoomImageTitle("รูปต้นฉบับ");
+                }}
+                style={({ pressed }) => [
+                  {
                     borderRadius: 12,
-                    backgroundColor: "#F3F3F3",
-                  }}
-                  resizeMode="contain"
-                />
-              </>
-            )}
+                    overflow: "hidden",
+                  },
+                  pressed && {
+                    opacity: 0.85,
+                    transform: [{ scale: 0.99 }],
+                  },
+              ]}
+            >
+              <Image
+                source={{ uri: image }}
+                style={{
+                  width: "100%",
+                  height: 280,
+                  borderRadius: 12,
+                  backgroundColor: "#F3F3F3",
+              }}
+              resizeMode="contain"
+            />
+          </Pressable>
+
+          <Text
+            style={{
+              color: "#6B7280",
+              fontWeight: "700",
+              textAlign: "center",
+              marginTop: -6,
+            }}
+          >
+            แตะรูปเพื่อซูม 🔍
+          </Text>
+        </>
+      )}
+
+      {annotatedUrl && (
+        <>
+          <Text style={{ fontWeight: "700", fontSize: 16 }}>
+            ผลลัพธ์รายลูก
+          </Text>
+
+        <Pressable
+          onPress={() => {
+            setZoomImageUri(annotatedUrl);
+            setZoomImageTitle("ผลลัพธ์รายลูก");
+          }}
+          style={({ pressed }) => [
+            {
+              borderRadius: 12,
+              overflow: "hidden",
+            },
+            pressed && {
+              opacity: 0.85,
+              transform: [{ scale: 0.99 }],
+            },
+          ]}
+        >
+        <Image
+          source={{ uri: annotatedUrl }}
+          style={{
+            width: "100%",
+            height: 340,
+            borderRadius: 12,
+            backgroundColor: "#F3F3F3",
+          }}
+          resizeMode="contain"
+          />
+        </Pressable>
+
+        <Text
+          style={{
+            color: "#6B7280",
+            fontWeight: "700",
+            textAlign: "center",
+            marginTop: -6,
+          }}
+        >
+          แตะรูปเพื่อซูมกรอบ AI 🔍
+        </Text>
+      </>
+      )}
 
             {summary && (
               <View
@@ -1314,6 +1482,15 @@ export default function HomeScreen() {
             )}
           </View>
         </ScrollView>
+
+        <ZoomImageModal
+          uri={zoomImageUri}
+          title={zoomImageTitle}
+          onClose={() => {
+            setZoomImageUri(null);
+            setZoomImageTitle("");
+          }}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
