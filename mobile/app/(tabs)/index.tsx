@@ -34,6 +34,8 @@ function ZoomImageModal({
 }) {
   const { width, height } = Dimensions.get("window");
 
+  
+
   return (
     <Modal
       visible={!!uri}
@@ -718,6 +720,44 @@ export default function HomeScreen() {
       setBatchStatusText("❌ Detect หลายรูปไม่สำเร็จ");
     } finally {
       setBatchLoading(false);
+    }
+  };
+
+  // [STEP 12.3] เปิดผลจาก Batch ให้เป็นผลหลัก และซ่อนรูปอื่นที่ไม่เกี่ยว
+  const openBatchResultAsMain = async (item: BatchDetectResult) => {
+    if (!item.ok) {
+      Alert.alert("เปิดไม่ได้", item.error || "ผลลัพธ์รูปนี้ไม่สำเร็จ");
+      return;
+    }
+
+    // ให้เหลือเฉพาะรูปที่เลือกเป็นรูปหลัก
+    setImage(item.sourceUri);
+    setSelectedImages([
+      {
+        id: `focused-${item.order}-${Date.now()}`,
+        uri: item.sourceUri,
+      },
+    ]);
+
+    // เอาผล Detect ของรูปนั้นมาแสดงเป็นผลหลัก
+    setResult(item.rawResult ?? null);
+    setAnnotatedUrl(item.annotatedUrl ?? null);
+
+    // ซ่อนผล Batch รูปอื่น ๆ ออก
+    setBatchResults([]);
+    setBatchStatusText("");
+    setBatchLoading(false);
+
+    setErrorMsg("");
+    setShowDebug(false);
+
+    setStatusText(
+      `✅ เปิดผลลัพธ์รูปที่ ${item.order} • พบ ${item.count ?? 0} ลูก`
+    );
+
+    // โหลดคอมเมนต์รายลูกของ scan_id นั้น
+    if (item.scanId) {
+      await loadScanDetailsForFeedback(item.scanId);
     }
   };
 
@@ -1645,18 +1685,7 @@ export default function HomeScreen() {
 
                           <View style={{ flexDirection: "row", gap: 10 }}>
                             <Pressable
-                              onPress={() => {
-                                setImage(item.sourceUri);
-                                setResult(item.rawResult ?? null);
-                                setAnnotatedUrl(item.annotatedUrl ?? null);
-                                setStatusText(
-                                  `เปิดผลลัพธ์รูปที่ ${item.order} • พบ ${item.count ?? 0} ลูก`
-                                );
-
-                                if (item.scanId) {
-                                  loadScanDetailsForFeedback(item.scanId);
-                                }
-                              }}
+                              onPress={() => openBatchResultAsMain(item)}
                               style={({ pressed }) => [
                                 {
                                   flex: 1,
