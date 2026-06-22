@@ -177,7 +177,7 @@ async def reset_bridge(
 
     return HTMLResponse(content=html)
 
-
+# ตรงนี้คือ API/detect ที่ Mobile ส่งรูปเข้ามาให้ Backend วิเคราะห์
 @app.post("/detect")
 async def detect(
     file: UploadFile = File(...),
@@ -200,7 +200,7 @@ async def detect(
             status_code=400,
             detail=f"Invalid content_type: {file.content_type}",
         )
-
+    # Backend อ่านไฟล์รูปที่ Mobile ส่งเข้ามา
     image_bytes = await file.read()
 
     print(
@@ -246,7 +246,7 @@ async def detect(
 
         t0 = time.time()
 
-        # Model 1 + Model 2 pipeline
+        # Model 1 + Model 2 pipeline main.py ส่งรูปไปให้ AI ใน infer.py วิเคราะห์
         result = yolo_service.predict(
             img,
             conf=conf if conf is not None else DEFAULT_CONF,
@@ -262,7 +262,7 @@ async def detect(
 
         result_name = f"result_{saved_name}"
         result_path = str(Path(RESULT_DIR) / result_name)
-
+        # หลังจาก AI วาดกรอบและใส่ผลลัพธ์แล้ว Backend จะเซฟรูปผลลัพธ์ไว้ในโฟลเดอร์ result
         if annotated_image is not None:
             cv2.imwrite(result_path, annotated_image)
         else:
@@ -333,7 +333,7 @@ async def detect(
             # ไม่ให้ detect พัง ถ้า Supabase มีปัญหา
             supabase_error = str(e)
             print("[supabase] save scan failed:", repr(e))
-
+        #Backend ส่งผลกลับไปให้ Mobile เป็น JSON มีทั้งรูปผลลัพธ์, สรุปจำนวนกล้วยแต่ละระดับ และ รายละเอียดรายลูก
         return {
             "ok": True,
             "filename": file.filename,

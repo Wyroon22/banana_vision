@@ -251,6 +251,9 @@ export default function HomeScreen() {
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchStatusText, setBatchStatusText] = useState("");
 
+  // [STEP 12.4] จำว่าตอนนี้เปิดผลลัพธ์ Batch รูปไหนเป็นรูปหลักอยู่
+  const [focusedBatchResultId, setFocusedBatchResultId] = useState<string | null>(null);
+
   // [STEP 11] เก็บ feedback รายลูกบนหน้า Home หลัง Detect
   const [scanDetails, setScanDetails] = useState<any[]>([]);
   const [bananaComments, setBananaComments] = useState<Record<string, string>>({});
@@ -303,6 +306,7 @@ export default function HomeScreen() {
         setBatchResults([]);
         setBatchLoading(false);
         setBatchStatusText("");
+        setFocusedBatchResultId(null);
         setScanDetails([]);
         setBananaComments({});
         setBananaRatings({});
@@ -405,6 +409,7 @@ export default function HomeScreen() {
     setBatchResults([]);
     setBatchLoading(false);
     setBatchStatusText("");
+    setFocusedBatchResultId(null);
   };
 
   // [STEP 5 FIX] เคลียร์ข้อมูล scan ทั้งหมดเมื่อเปลี่ยน user / logout
@@ -424,6 +429,7 @@ export default function HomeScreen() {
     setBatchResults([]);
     setBatchLoading(false);
     setBatchStatusText("");
+    setFocusedBatchResultId(null);
   };
 
   // 📸 ถ่ายรูป
@@ -622,7 +628,7 @@ export default function HomeScreen() {
           format: ImageManipulator.SaveFormat.JPEG,
         }
       );
-
+      // แอปเอารูปที่ผู้ใช้เลือกหรือถ่าย มาใส่ใน FormData เพื่อส่งไป Backend
       const formData = new FormData();
 
       formData.append("file", {
@@ -636,12 +642,12 @@ export default function HomeScreen() {
       } else {
         formData.append("guest_id", "guest");
       }
-
+      // จุดที่ Mobile ส่งรูปไปให้ Backend วิเคราะห์ด้วย AI
       const res = await fetch(`${API_BASE}/detect`, {
         method: "POST",
         body: formData,
       });
-
+      // แอปรับผลลัพธ์จาก Backend กลับมาเป็น JSON
       const json = await res.json();
 
       if (!res.ok) {
@@ -689,6 +695,7 @@ export default function HomeScreen() {
     try {
       setBatchLoading(true);
       setBatchResults([]);
+      setFocusedBatchResultId(null);
       setErrorMsg("");
       setStatusText("");
       setBatchStatusText(`กำลังตรวจรูปทั้งหมด ${selectedImages.length} รูป...`);
@@ -723,28 +730,24 @@ export default function HomeScreen() {
     }
   };
 
-  // [STEP 12.3] เปิดผลจาก Batch ให้เป็นผลหลัก และซ่อนรูปอื่นที่ไม่เกี่ยว
+  // [STEP 12.4] เปิดผลจาก Batch ให้เป็นผลหลัก
+  // แต่ยังเก็บผล Batch ทั้งหมดไว้ เพื่อให้ย้อนกลับไปเลือกผลรูปอื่นได้
   const openBatchResultAsMain = async (item: BatchDetectResult) => {
     if (!item.ok) {
       Alert.alert("เปิดไม่ได้", item.error || "ผลลัพธ์รูปนี้ไม่สำเร็จ");
       return;
     }
 
-    // ให้เหลือเฉพาะรูปที่เลือกเป็นรูปหลัก
-    setImage(item.sourceUri);
-    setSelectedImages([
-      {
-        id: `focused-${item.order}-${Date.now()}`,
-        uri: item.sourceUri,
-      },
-    ]);
+    // จำว่าผลลัพธ์รูปไหนกำลังถูกเปิดเป็นรูปหลัก
+    setFocusedBatchResultId(item.id);
 
-    // เอาผล Detect ของรูปนั้นมาแสดงเป็นผลหลัก
+    // เอารูปต้นฉบับและผล Detect ของรูปนั้นมาแสดงเป็นผลหลัก
+    setImage(item.sourceUri);
     setResult(item.rawResult ?? null);
     setAnnotatedUrl(item.annotatedUrl ?? null);
 
-    // ซ่อนผล Batch รูปอื่น ๆ ออก
-    setBatchResults([]);
+    // ไม่ล้าง selectedImages และไม่ล้าง batchResults
+    // เพื่อให้ยังมีแถบเลือกผลลัพธ์รูปอื่น ๆ ได้
     setBatchStatusText("");
     setBatchLoading(false);
 
@@ -804,13 +807,13 @@ export default function HomeScreen() {
 
       const json = await res.json();
       if (!res.ok) throw new Error(json?.detail ?? "Detect failed");
-
+      // เก็บผล AI ไว้ใน State เพื่อเอาไปแสดงบนหน้าจอ
       setResult(json);
 
       if (json?.scan_id) {
         await loadScanDetailsForFeedback(json.scan_id);
       }
-
+      // แอปเอา URL ของรูปผลลัพธ์จาก Backend มาแสดง เป็นรูปที่มีกรอบและ label จาก AI
       if (json?.result_url) {
         setAnnotatedUrl(`${API_BASE}${json.result_url}?t=${Date.now()}`);
       }
@@ -1420,6 +1423,122 @@ export default function HomeScreen() {
               </View>
             )}
 
+            {/* [STEP 12.4] แถบเลือกผลลัพธ์ที่ Detect แล้ว เพื่อเปลี่ยนรูปหลักได้ */}
+            {batchResults.length > 0 && (
+              <View style={{ gap: 10 }}>
+                <Text
+                  style={{
+                    fontWeight: "900",
+                    fontSize: 18,
+                    color: "#111827",
+                  }}
+                >
+                  ผลลัพธ์ที่ตรวจแล้ว ({batchResults.length})
+                </Text>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 10 }}
+                >
+                  {batchResults.map((item) => {
+                    const isFocused = focusedBatchResultId === item.id;
+
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onPress={() => openBatchResultAsMain(item)}
+                        disabled={!item.ok}
+                        style={({ pressed }) => [
+                          {
+                            width: 128,
+                            borderRadius: 16,
+                            padding: 8,
+                            backgroundColor: isFocused ? "#ECFDF5" : "#FFFFFF",
+                            borderWidth: isFocused ? 3 : 1,
+                            borderColor: isFocused ? "#16A34A" : "#E5E7EB",
+                            opacity: item.ok ? 1 : 0.55,
+                          },
+                          pressed &&
+                            item.ok && {
+                              opacity: 0.85,
+                              transform: [{ scale: 0.97 }],
+                            },
+                        ]}
+                      >
+                        <Image
+                          source={{ uri: item.annotatedUrl || item.sourceUri }}
+                          style={{
+                            width: "100%",
+                            height: 90,
+                            borderRadius: 12,
+                            backgroundColor: "#F3F4F6",
+                          }}
+                          resizeMode="cover"
+                        />
+
+                        <View
+                          style={{
+                            position: "absolute",
+                            left: 12,
+                            top: 12,
+                            backgroundColor: isFocused ? "#16A34A" : "rgba(17,24,39,0.75)",
+                            borderRadius: 999,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: "#FFFFFF",
+                              fontWeight: "900",
+                              fontSize: 12,
+                            }}
+                          >
+                            {item.order}
+                          </Text>
+                        </View>
+
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            marginTop: 6,
+                            color: "#111827",
+                            fontWeight: "900",
+                            textAlign: "center",
+                          }}
+                        >
+                          รูปที่ {item.order}
+                        </Text>
+
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color: item.ok ? "#16A34A" : "#DC2626",
+                            fontWeight: "800",
+                            textAlign: "center",
+                            fontSize: 12,
+                          }}
+                        >
+                          {item.ok ? `พบ ${item.count ?? 0} ลูก` : "ตรวจไม่สำเร็จ"}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                <Text
+                  style={{
+                    color: "#6B7280",
+                    fontWeight: "700",
+                    textAlign: "center",
+                  }}
+                >
+                  แตะผลลัพธ์เพื่อเปลี่ยนรูปหลัก 🔁
+                </Text>
+              </View>
+            )}
+
             {image && (
               <>
                 <Text style={{ fontWeight: "700", fontSize: 16 }}>รูปต้นฉบับ</Text>
@@ -1511,7 +1630,7 @@ export default function HomeScreen() {
         </Text>
       </>
       )}
-
+          
             {summary && (
               <View
                 style={{
@@ -1524,7 +1643,7 @@ export default function HomeScreen() {
                 <Text style={{ fontWeight: "800", fontSize: 18, marginBottom: 4 }}>
                   📊 สรุปผล
                 </Text>
-
+                {/* แสดงจำนวนกล้วยแต่ละระดับความสุกที่ AI วิเคราะห์ได้ */}
                 <Text>• ตรวจเจอ: {summary.total} ลูก</Text>
                 <Text>• ดิบ: {summary.green} ลูก</Text>
                 <Text>• ห่าม: {summary.breaker} ลูก</Text>
@@ -1584,7 +1703,7 @@ export default function HomeScreen() {
             )}
 
             {/* [STEP 12.2] ผลลัพธ์ Detect หลายรูป */}
-            {batchResults.length > 0 && (
+            {batchResults.length > 0 && !focusedBatchResultId && (
               <View
                 style={{
                   backgroundColor: "#FFFFFF",
