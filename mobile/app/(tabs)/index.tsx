@@ -1358,8 +1358,21 @@ export default function HomeScreen() {
                       <Pressable
                         key={item.id}
                         onPress={() => {
+                          const hasDetectResult =
+                            !!annotatedUrl ||
+                            batchResults.length > 0 ||
+                            scanDetails.length > 0 ||
+                            !!result?.ok;
+
+                          // [STEP 12.7] หลัง Detect แล้ว แตะ thumbnail ให้เป็นการซูมเท่านั้น
+                          // ไม่ reset ผลลัพธ์ ไม่ล้างรูปตีกรอบ ไม่ล้างคอมเมนต์รายลูก
+                          if (hasDetectResult) {
+                            openZoomImage(item.uri, `รูปต้นฉบับที่ ${index + 1}`);
+                            return;
+                          }
+
+                          // ก่อน Detect ยังใช้แตะเพื่อเลือกเป็นรูปหลักได้เหมือนเดิม
                           setImage(item.uri);
-                          resetState();
                           openZoomImage(item.uri, `รูปที่ ${index + 1}`);
                         }}
                         style={({ pressed }) => [
@@ -1420,7 +1433,7 @@ export default function HomeScreen() {
                     textAlign: "center",
                   }}
                 >
-                  แตะรูปเพื่อเลือกเป็นรูปหลักและซูมดูภาพ 🔍
+                  ก่อน Detect: แตะเพื่อเลือกเป็นรูปหลัก • หลัง Detect: แตะเพื่อซูม 🔍
                 </Text>
               </View>
             )}
