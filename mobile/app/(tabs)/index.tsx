@@ -9,11 +9,10 @@ import {
   Platform,
   Alert,
   TextInput,
-  Modal,
-  Dimensions,
 } from "react-native";
 import { useEffect, useMemo, useState } from "react";
 import { router } from "expo-router";
+import ImageView from "react-native-image-viewing";
 
 // [STEP 4.1] import Supabase client เพื่ออ่าน session/login state
 import { supabase } from "../../lib/supabase";
@@ -26,37 +25,38 @@ const TARGET_WIDTH = 1280; // ✅ resize กันไฟล์ใหญ่เก
 function ZoomImageModal({
   uri,
   title,
+  imageKey,
   onClose,
 }: {
   uri: string | null;
   title: string;
+  imageKey: number;
   onClose: () => void;
 }) {
-  const { width, height } = Dimensions.get("window");
-
-  
+  const images = useMemo(() => {
+    if (!uri) return [];
+    return [{ uri }];
+  }, [uri]);
 
   return (
-    <Modal
+    <ImageView
+      key={`image-viewer-${imageKey}-${uri ?? "empty"}`}
+      images={images}
+      imageIndex={0}
       visible={!!uri}
-      transparent
-      animationType="fade"
       onRequestClose={onClose}
-    >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.95)",
-          paddingTop: 50,
-        }}
-      >
+      swipeToCloseEnabled
+      doubleTapToZoomEnabled
+      HeaderComponent={() => (
         <View
           style={{
+            paddingTop: 54,
             paddingHorizontal: 18,
             paddingBottom: 12,
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
+            backgroundColor: "rgba(0,0,0,0.75)",
           }}
         >
           <Text
@@ -90,44 +90,28 @@ function ZoomImageModal({
             <Text style={{ color: "#111827", fontWeight: "900" }}>ปิด</Text>
           </Pressable>
         </View>
-
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{
-            minHeight: height - 90,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          maximumZoomScale={4}
-          minimumZoomScale={1}
-          centerContent
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-        >
-          {uri && (
-            <Image
-              source={{ uri }}
-              style={{
-                width,
-                height: height - 120,
-              }}
-              resizeMode="contain"
-            />
-          )}
-        </ScrollView>
-
-        <Text
+      )}
+      FooterComponent={() => (
+        <View
           style={{
-            color: "#D1D5DB",
-            textAlign: "center",
-            fontWeight: "700",
-            paddingBottom: 18,
+            paddingHorizontal: 18,
+            paddingTop: 10,
+            paddingBottom: 28,
+            backgroundColor: "rgba(0,0,0,0.75)",
           }}
         >
-          บีบนิ้วเพื่อซูม / ลากเพื่อดูรายละเอียด 🔍
-        </Text>
-      </View>
-    </Modal>
+          <Text
+            style={{
+              color: "#D1D5DB",
+              textAlign: "center",
+              fontWeight: "700",
+            }}
+          >
+            บีบนิ้วเพื่อซูม / ลากเพื่อดูรายละเอียด 🔍
+          </Text>
+        </View>
+      )}
+    />
   );
 }
 
@@ -239,6 +223,7 @@ export default function HomeScreen() {
   const [showDebug, setShowDebug] = useState(false);
   const [zoomImageUri, setZoomImageUri] = useState<string | null>(null);
   const [zoomImageTitle, setZoomImageTitle] = useState("");
+  const [zoomImageKey, setZoomImageKey] = useState(0);
 
   // [STEP 12.1] เก็บรูปที่เลือกหลายใบจาก Gallery
   // ตอนนี้ Detect จะยังตรวจเฉพาะรูปหลักที่อยู่ใน state image ก่อน
@@ -391,6 +376,24 @@ export default function HomeScreen() {
       detections: dets,
     };
   }, [result]);
+
+  // [STEP 12.5] เปิดรูปซูมแบบ force remount
+  // แก้บั๊กบางเครื่องที่เปลี่ยนรูปแล้ว Modal แสดงภาพดำ
+  const openZoomImage = (uri: string | null | undefined, title: string) => {
+    if (!uri) {
+      Alert.alert("เปิดรูปไม่ได้", "ไม่พบ URL หรือ path ของรูปนี้");
+      return;
+    }
+
+    setZoomImageUri(null);
+    setZoomImageTitle("");
+
+    requestAnimationFrame(() => {
+      setZoomImageKey(Date.now());
+      setZoomImageUri(uri);
+      setZoomImageTitle(title);
+    });
+  };
 
   const resetState = () => {
     setErrorMsg("");
@@ -1357,8 +1360,7 @@ export default function HomeScreen() {
                         onPress={() => {
                           setImage(item.uri);
                           resetState();
-                          setZoomImageUri(item.uri);
-                          setZoomImageTitle(`รูปที่ ${index + 1}`);
+                          openZoomImage(item.uri, `รูปที่ ${index + 1}`);
                         }}
                         style={({ pressed }) => [
                           {
@@ -1545,8 +1547,7 @@ export default function HomeScreen() {
 
             <Pressable
                   onPress={() => {
-                    setZoomImageUri(image);
-                    setZoomImageTitle("รูปต้นฉบับ");
+                    openZoomImage(image, "รูปต้นฉบับ");
                 }}
                 style={({ pressed }) => [
                   {
@@ -1592,8 +1593,7 @@ export default function HomeScreen() {
 
         <Pressable
           onPress={() => {
-            setZoomImageUri(annotatedUrl);
-            setZoomImageTitle("ผลลัพธ์รายลูก");
+            openZoomImage(annotatedUrl, "ผลลัพธ์รายลูก");
           }}
           style={({ pressed }) => [
             {
@@ -1766,8 +1766,10 @@ export default function HomeScreen() {
                           {item.annotatedUrl && (
                             <Pressable
                               onPress={() => {
-                                setZoomImageUri(item.annotatedUrl ?? null);
-                                setZoomImageTitle(`ผลลัพธ์รูปที่ ${item.order}`);
+                                openZoomImage(
+                                  item.annotatedUrl ?? item.sourceUri,
+                                  `ผลลัพธ์รูปที่ ${item.order}`
+                                );
                               }}
                               style={({ pressed }) => [
                                 {
@@ -2117,6 +2119,7 @@ export default function HomeScreen() {
         <ZoomImageModal
           uri={zoomImageUri}
           title={zoomImageTitle}
+          imageKey={zoomImageKey}
           onClose={() => {
             setZoomImageUri(null);
             setZoomImageTitle("");
