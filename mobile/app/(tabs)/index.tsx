@@ -10,7 +10,7 @@ import {
   Alert,
   TextInput,
 } from "react-native";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { router } from "expo-router";
 import ImageView from "react-native-image-viewing";
 
@@ -115,6 +115,68 @@ function ZoomImageModal({
   );
 }
 
+function DockButton({
+  icon,
+  label,
+  active = false,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        {
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 5,
+        },
+        pressed && {
+          opacity: 0.75,
+          transform: [{ scale: 0.94 }],
+        },
+      ]}
+    >
+      <View
+        style={{
+          width: active ? 76 : 58,
+          height: active ? 76 : 58,
+          borderRadius: active ? 38 : 29,
+          backgroundColor: active ? "#16A34A" : "#F3F4F6",
+          alignItems: "center",
+          justifyContent: "center",
+          borderWidth: active ? 6 : 0,
+          borderColor: active ? "#FFFFFF" : "transparent",
+          marginTop: active ? -32 : 0,
+          shadowColor: active ? "#16A34A" : "#000000",
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: active ? 0.28 : 0.12,
+          shadowRadius: 8,
+          elevation: active ? 8 : 3,
+        }}
+      >
+        <Text style={{ fontSize: active ? 34 : 25 }}>{icon}</Text>
+      </View>
+
+      <Text
+        numberOfLines={1}
+        style={{
+          color: "#FFFFFF",
+          fontWeight: "900",
+          fontSize: active ? 13 : 12,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 function StarRating({
   value,
   onChange,
@@ -208,6 +270,8 @@ type BatchDetectResult = {
 };
 
 export default function HomeScreen() {
+  const scrollRef = useRef<ScrollView>(null);
+
   const [image, setImage] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
 
@@ -840,13 +904,14 @@ export default function HomeScreen() {
         keyboardVerticalOffset={90}
       >
         <ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           contentContainerStyle={{
             paddingHorizontal: 18,
             paddingTop: 46,
-            paddingBottom: 140, // [STEP 9.5] เพิ่มพื้นที่ล่างกันคีย์บอร์ดบัง
+            paddingBottom: 230, // [CUSTOM DOCK] เพิ่มพื้นที่ล่างกัน Dock บัง
           }}
         >
           <View style={{ gap: 14 }}>
@@ -1148,42 +1213,6 @@ export default function HomeScreen() {
                 </Text>
               </Pressable>
 
-              <View style={{ flexDirection: "row", gap: 12 }}>
-                <Pressable
-                  onPress={takePhoto}
-                  style={{
-                    flex: 1,
-                    backgroundColor: "#FFFFFF",
-                    borderRadius: 18,
-                    paddingVertical: 20,
-                    alignItems: "center",
-                    borderWidth: 1,
-                    borderColor: "#E5E7EB",
-                  }}
-                >
-                  <Text style={{ color: "#16A34A", fontSize: 20, fontWeight: "900" }}>
-                    📸 ถ่ายรูป
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={pickImage}
-                  style={{
-                    flex: 1,
-                    backgroundColor: "#FFFFFF",
-                    borderRadius: 18,
-                    paddingVertical: 20,
-                    alignItems: "center",
-                    borderWidth: 1,
-                    borderColor: "#E5E7EB",
-                  }}
-                >
-                  <Text style={{ color: "#4F46E5", fontSize: 20, fontWeight: "900" }}>
-                    🖼 เลือกรูป
-                  </Text>
-                </Pressable>
-              </View>
-
               <Pressable
                 onPress={detect}
                 disabled={loading || batchLoading}
@@ -1240,30 +1269,6 @@ export default function HomeScreen() {
                 </Text>
               </Pressable>
 
-              {user && (
-                <Pressable
-                  onPress={() => router.push("/history" as any)}
-                  android_ripple={{ color: "#D1FAE5" }}
-                  style={({ pressed }) => [
-                    {
-                      backgroundColor: "#ECFDF5",
-                      borderRadius: 20,
-                      paddingVertical: 18,
-                      alignItems: "center",
-                      borderWidth: 1,
-                      borderColor: "#22C55E",
-                    },
-                    pressed && {
-                      opacity: 0.8,
-                      transform: [{ scale: 0.97 }],
-                    },
-                  ]}
-                >
-                  <Text style={{ color: "#166534", fontSize: 22, fontWeight: "900" }}>
-                    📜 ประวัติการตรวจ
-                  </Text>
-                </Pressable>
-              )}
             </View>
 
             <View
@@ -2128,6 +2133,67 @@ export default function HomeScreen() {
             )}
           </View>
         </ScrollView>
+
+        {/* [CUSTOM DOCK] Bottom Navigation แบบลอย */}
+        <View
+          style={{
+            position: "absolute",
+            left: 18,
+            right: 18,
+            bottom: 18,
+            height: 96,
+            borderRadius: 36,
+            backgroundColor: "#111827",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingHorizontal: 10,
+            shadowColor: "#000000",
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.25,
+            shadowRadius: 14,
+            elevation: 12,
+          }}
+        >
+          <DockButton icon="📷" label="ถ่ายรูป" onPress={takePhoto} />
+
+          <DockButton icon="🖼️" label="เลือกรูป" onPress={pickImage} />
+
+          <DockButton
+            icon="🏠"
+            label="Home"
+            active
+            onPress={() => {
+              scrollRef.current?.scrollTo({ y: 0, animated: true });
+            }}
+          />
+
+          <DockButton
+            icon="📋"
+            label="ประวัติ"
+            onPress={() => {
+              if (!user) {
+                Alert.alert("ต้อง Login ก่อน", "กรุณา Login ก่อนดูประวัติการตรวจ");
+                return;
+              }
+
+              router.push("/history" as any);
+            }}
+          />
+
+          <DockButton
+            icon="👤"
+            label="โปรไฟล์"
+            onPress={() => {
+              if (!user) {
+                Alert.alert("ต้อง Login ก่อน", "กรุณา Login ก่อนดูโปรไฟล์");
+                return;
+              }
+
+              router.push("/profile" as any);
+            }}
+          />
+        </View>
 
         <ZoomImageModal
           uri={zoomImageUri}
