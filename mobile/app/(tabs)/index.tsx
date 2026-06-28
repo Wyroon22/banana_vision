@@ -8,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  TextInput,
 } from "react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { router } from "expo-router";
@@ -21,6 +20,48 @@ import * as ImageManipulator from "expo-image-manipulator";
 
 const API_BASE = "http://172.20.10.2:8000";
 const TARGET_WIDTH = 1280; // ✅ resize กันไฟล์ใหญ่เกิน
+
+const RIPENESS_CHOICES = [
+  { value: "green", label: "ดิบ", color: "#15803D" },
+  { value: "breaker", label: "ห่าม", color: "#B45309" },
+  { value: "ripe", label: "สุก", color: "#EA580C" },
+  { value: "overripe", label: "งอม", color: "#DC2626" },
+];
+
+const COLOR_LEVEL_CHOICES: Record<
+  string,
+  { value: string; label: string }[]
+> = {
+  green: [
+    { value: "dark_green", label: "เขียวเข้ม" },
+    { value: "light_green", label: "เขียวอ่อน" },
+    { value: "pale_green", label: "เขียวซีด" },
+  ],
+  breaker: [
+    { value: "green_yellow", label: "เขียวอมเหลือง" },
+    { value: "yellow_green", label: "เหลืองอมเขียว" },
+    { value: "partial_yellow", label: "เหลืองบางส่วน" },
+  ],
+  ripe: [
+    { value: "yellow", label: "เหลืองล้วน" },
+    { value: "golden_yellow", label: "เหลืองทอง" },
+    { value: "light_spots", label: "เหลืองมีจุดดำนิดหน่อย" },
+  ],
+  overripe: [
+    { value: "many_black_spots", label: "จุดดำเยอะ" },
+    { value: "brown_yellow", label: "น้ำตาลปนเหลือง" },
+    { value: "brown_black", label: "น้ำตาล/ดำ" },
+  ],
+};
+
+function getChoiceLabel(
+  choices: { value: string; label: string }[],
+  value?: string | null
+) {
+  if (!value) return "-";
+  return choices.find((choice) => choice.value === value)?.label ?? value;
+}
+
 
 function ZoomImageModal({
   uri,
@@ -177,45 +218,51 @@ function DockButton({
   );
 }
 
-function StarRating({
-  value,
-  onChange,
+
+function ChoicePill({
+  label,
+  active,
+  color = "#16A34A",
   disabled = false,
+  onPress,
 }: {
-  value: number;
-  onChange: (value: number) => void;
+  label: string;
+  active: boolean;
+  color?: string;
   disabled?: boolean;
+  onPress: () => void;
 }) {
   return (
-    <View style={{ flexDirection: "row", gap: 8 }}>
-      {[1, 2, 3, 4, 5].map((star) => {
-        const active = star <= value;
-
-        return (
-          <Pressable
-            key={star}
-            disabled={disabled}
-            onPress={() => onChange(star)}
-            style={({ pressed }) => [
-              {
-                opacity: disabled ? 0.45 : pressed ? 0.65 : 1,
-                transform: pressed ? [{ scale: 0.9 }] : [{ scale: 1 }],
-              },
-            ]}
-          >
-            <Text
-              style={{
-                fontSize: 34,
-                color: active ? "#F59E0B" : "#D1D5DB",
-                fontWeight: "900",
-              }}
-            >
-              {active ? "★" : "☆"}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        {
+          paddingVertical: 9,
+          paddingHorizontal: 13,
+          borderRadius: 999,
+          borderWidth: 1.5,
+          borderColor: active ? color : "#D1D5DB",
+          backgroundColor: active ? color : "#FFFFFF",
+          opacity: disabled ? 0.55 : 1,
+        },
+        pressed &&
+          !disabled && {
+            opacity: 0.8,
+            transform: [{ scale: 0.96 }],
+          },
+      ]}
+    >
+      <Text
+        style={{
+          color: active ? "#FFFFFF" : color,
+          fontWeight: "900",
+          fontSize: 14,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -303,10 +350,10 @@ export default function HomeScreen() {
   // [STEP 12.4] จำว่าตอนนี้เปิดผลลัพธ์ Batch รูปไหนเป็นรูปหลักอยู่
   const [focusedBatchResultId, setFocusedBatchResultId] = useState<string | null>(null);
 
-  // [STEP 11] เก็บ feedback รายลูกบนหน้า Home หลัง Detect
+  // [STEP 13] เก็บ feedback แบบ Label Correction รายลูกบนหน้า Home หลัง Detect
   const [scanDetails, setScanDetails] = useState<any[]>([]);
-  const [bananaComments, setBananaComments] = useState<Record<string, string>>({});
-  const [bananaRatings, setBananaRatings] = useState<Record<string, number>>({});
+  const [bananaRipenessChoices, setBananaRipenessChoices] = useState<Record<string, string>>({});
+  const [bananaColorChoices, setBananaColorChoices] = useState<Record<string, string>>({});
   const [savingBananaId, setSavingBananaId] = useState<string | null>(null);
 
   // [STEP 4.1] เช็กว่า user login อยู่ไหม ตอนเปิดหน้า Home
@@ -357,8 +404,8 @@ export default function HomeScreen() {
         setBatchStatusText("");
         setFocusedBatchResultId(null);
         setScanDetails([]);
-        setBananaComments({});
-        setBananaRatings({});
+        setBananaRipenessChoices({});
+        setBananaColorChoices({});
         setSavingBananaId(null);
 
         setUser(nextUser);
@@ -468,8 +515,8 @@ export default function HomeScreen() {
 
     // [STEP 11] เคลียร์ feedback รายลูกเก่า
     setScanDetails([]);
-    setBananaComments({});
-    setBananaRatings({});
+    setBananaRipenessChoices({});
+    setBananaColorChoices({});
     setSavingBananaId(null);
 
     // [STEP 12.2] เคลียร์ผล Detect หลายรูปเก่า
@@ -490,8 +537,8 @@ export default function HomeScreen() {
     setErrorMsg("");
     setShowDebug(false);
     setScanDetails([]);
-    setBananaComments({});
-    setBananaRatings({});
+    setBananaRipenessChoices({});
+    setBananaColorChoices({});
     setSavingBananaId(null);
     setBatchResults([]);
     setBatchLoading(false);
@@ -590,18 +637,18 @@ export default function HomeScreen() {
 
     setScanDetails(rows);
 
-    const nextComments: Record<string, string> = {};
-    const nextRatings: Record<string, number> = {};
+    const nextRipenessChoices: Record<string, string> = {};
+    const nextColorChoices: Record<string, string> = {};
 
     rows.forEach((row, index) => {
       const key = String(row.id ?? index);
 
-      nextComments[key] = row.user_comment ?? "";
-      nextRatings[key] = Number(row.user_rating ?? 0);
+      nextRipenessChoices[key] = row.user_selected_ripeness ?? "";
+      nextColorChoices[key] = row.user_selected_color_level ?? "";
     });
 
-    setBananaComments(nextComments);
-    setBananaRatings(nextRatings);
+    setBananaRipenessChoices(nextRipenessChoices);
+    setBananaColorChoices(nextColorChoices);
   };
 
   const handleSaveBananaFeedback = async (row: any, index: number) => {
@@ -614,13 +661,29 @@ export default function HomeScreen() {
     }
 
     if (!user?.id) {
-      Alert.alert("ต้อง Login ก่อน", "กรุณา Login ก่อนบันทึกคอมเมนต์รายลูก");
+      Alert.alert("ต้อง Login ก่อน", "กรุณา Login ก่อนบันทึกผลแก้ไขรายลูก");
       return;
     }
 
     const key = String(detailId);
-    const text = bananaComments[key]?.trim() ?? "";
-    const rating = Number(bananaRatings[key] ?? 0);
+    const selectedRipeness = bananaRipenessChoices[key] ?? "";
+    const selectedColorLevel = bananaColorChoices[key] ?? "";
+
+    if (!selectedRipeness) {
+      Alert.alert(
+        "ยังไม่ได้เลือกความสุก",
+        `กรุณาเลือก ดิบ/ห่าม/สุก/งอม ให้กล้วยลูกที่ ${bananaNo}`
+      );
+      return;
+    }
+
+    if (!selectedColorLevel) {
+      Alert.alert(
+        "ยังไม่ได้เลือกระดับสี",
+        `กรุณาเลือกระดับสีของกล้วยลูกที่ ${bananaNo}`
+      );
+      return;
+    }
 
     try {
       setSavingBananaId(key);
@@ -630,13 +693,15 @@ export default function HomeScreen() {
       const { data: updatedRow, error } = await supabase
         .from("scan_details")
         .update({
-          user_comment: text || null,
-          user_rating: rating > 0 ? rating : null,
-          comment_updated_at: now,
+          user_selected_ripeness: selectedRipeness,
+          user_selected_color_level: selectedColorLevel,
+          feedback_updated_at: now,
         })
         .eq("id", detailId)
         .eq("scan_id", row.scan_id)
-        .select("id, user_comment, user_rating, comment_updated_at")
+        .select(
+          "id, user_selected_ripeness, user_selected_color_level, feedback_updated_at"
+        )
         .single();
 
       if (error) {
@@ -652,25 +717,25 @@ export default function HomeScreen() {
           item.id === detailId
             ? {
                 ...item,
-                user_comment: updatedRow.user_comment,
-                user_rating: updatedRow.user_rating,
-                comment_updated_at: updatedRow.comment_updated_at,
+                user_selected_ripeness: updatedRow.user_selected_ripeness,
+                user_selected_color_level: updatedRow.user_selected_color_level,
+                feedback_updated_at: updatedRow.feedback_updated_at,
               }
             : item
         )
       );
 
-      setBananaComments((prev) => ({
+      setBananaRipenessChoices((prev) => ({
         ...prev,
-        [key]: updatedRow.user_comment ?? "",
+        [key]: updatedRow.user_selected_ripeness ?? "",
       }));
 
-      setBananaRatings((prev) => ({
+      setBananaColorChoices((prev) => ({
         ...prev,
-        [key]: Number(updatedRow.user_rating ?? 0),
+        [key]: updatedRow.user_selected_color_level ?? "",
       }));
 
-      Alert.alert("บันทึกสำเร็จ", `บันทึกกล้วยลูกที่ ${bananaNo} แล้ว`);
+      Alert.alert("บันทึกสำเร็จ", `บันทึกผลแก้ไขกล้วยลูกที่ ${bananaNo} แล้ว`);
     } catch (err: any) {
       Alert.alert(
         "บันทึกไม่สำเร็จ",
@@ -771,8 +836,8 @@ export default function HomeScreen() {
       setResult(null);
       setAnnotatedUrl(null);
       setScanDetails([]);
-      setBananaComments({});
-      setBananaRatings({});
+      setBananaRipenessChoices({});
+      setBananaColorChoices({});
       setSavingBananaId(null);
       setShowDebug(false);
 
@@ -1884,7 +1949,7 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {/* [STEP 11] ให้คะแนน + คอมเมนต์รายลูกบนหน้า Home หลัง Detect */}
+            {/* [STEP 13] Label Correction รายลูกบนหน้า Home หลัง Detect */}
             {scanDetails.length > 0 && (
               <View
                 style={{
@@ -1903,16 +1968,17 @@ export default function HomeScreen() {
                     color: "#111827",
                   }}
                 >
-                  ⭐ ให้คะแนนและคอมเมนต์รายลูก
+                  ✅ ตรวจสอบ Label รายลูก
                 </Text>
 
                 <Text
                   style={{
                     color: "#6B7280",
                     fontWeight: "700",
+                    lineHeight: 20,
                   }}
                 >
-                  เลือกดาวและเขียนคอมเมนต์แยกตามกล้วยแต่ละลูกที่ AI ตรวจเจอ
+                  เลือกความสุกที่ถูกต้อง แล้วเลือกระดับสีของกล้วยแต่ละลูก เพื่อใช้เป็นข้อมูลแก้ไข Dataset
                 </Text>
 
                 {scanDetails.map((row, index) => {
@@ -1920,7 +1986,15 @@ export default function HomeScreen() {
                   const bananaNo = Number(row.banana_index ?? index + 1);
                   const isSavingThisRow = savingBananaId === key;
                   const confidenceText = formatConfidence(row.confidence);
-                  const label = row.ripeness_th ?? row.ripeness_label ?? "-";
+                  const aiLabel = row.ripeness_th ?? row.ripeness_label ?? "-";
+                  const selectedRipeness = bananaRipenessChoices[key] ?? "";
+                  const selectedColorLevel = bananaColorChoices[key] ?? "";
+                  const selectedRipenessChoice = RIPENESS_CHOICES.find(
+                    (choice) => choice.value === selectedRipeness
+                  );
+                  const colorOptions = selectedRipeness
+                    ? COLOR_LEVEL_CHOICES[selectedRipeness] ?? []
+                    : [];
 
                   return (
                     <View
@@ -1931,7 +2005,7 @@ export default function HomeScreen() {
                         padding: 12,
                         borderWidth: 1,
                         borderColor: "#E5E7EB",
-                        gap: 10,
+                        gap: 12,
                       }}
                     >
                       <View
@@ -1965,10 +2039,10 @@ export default function HomeScreen() {
                           <Text
                             style={{
                               fontWeight: "900",
-                              color: getRipenessColor(label),
+                              color: getRipenessColor(aiLabel),
                             }}
                           >
-                            {label}
+                            AI: {aiLabel}
                           </Text>
                         </View>
                       </View>
@@ -1982,96 +2056,138 @@ export default function HomeScreen() {
                         ความมั่นใจความสุก: {confidenceText}
                       </Text>
 
-                      <Text
-                        style={{
-                          color: "#111827",
-                          fontWeight: "900",
-                          fontSize: 15,
-                        }}
-                      >
-                        ⭐ ให้คะแนนกล้วยลูกนี้
-                      </Text>
-
-                      <StarRating
-                        value={bananaRatings[key] ?? 0}
-                        disabled={isSavingThisRow}
-                        onChange={(value) => {
-                          setBananaRatings((prev) => ({
-                            ...prev,
-                            [key]: value,
-                          }));
-                        }}
-                      />
-
-                      <Text
-                        style={{
-                          color: "#111827",
-                          fontWeight: "900",
-                          fontSize: 15,
-                        }}
-                      >
-                        📝 คอมเมนต์รายลูก
-                      </Text>
-
-                      <TextInput
-                        value={bananaComments[key] ?? ""}
-                        onChangeText={(text) => {
-                          setBananaComments((prev) => ({
-                            ...prev,
-                            [key]: text,
-                          }));
-                        }}
-                        placeholder={`เช่น กล้วยลูกที่ ${bananaNo} ควรเป็นสุก ไม่ใช่ห่าม`}
-                        placeholderTextColor="#9CA3AF"
-                        multiline
-                        style={{
-                          minHeight: 80,
-                          backgroundColor: "#FFFFFF",
-                          borderRadius: 12,
-                          borderWidth: 1,
-                          borderColor: "#D1D5DB",
-                          paddingHorizontal: 12,
-                          paddingVertical: 10,
-                          color: "#111827",
-                          fontWeight: "700",
-                          textAlignVertical: "top",
-                        }}
-                      />
-
-                      {!!row.user_comment && (
+                      <View style={{ gap: 8 }}>
                         <Text
                           style={{
-                            color: "#6B7280",
-                            fontWeight: "700",
-                            fontSize: 12,
+                            color: "#111827",
+                            fontWeight: "900",
+                            fontSize: 15,
                           }}
                         >
-                          คอมเมนต์ล่าสุด: {row.user_comment}
+                          1) ผู้ใช้เลือกความสุกที่ถูกต้อง
                         </Text>
-                      )}
 
-                      {!!row.user_rating && (
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            flexWrap: "wrap",
+                            gap: 8,
+                          }}
+                        >
+                          {RIPENESS_CHOICES.map((choice) => (
+                            <ChoicePill
+                              key={choice.value}
+                              label={choice.label}
+                              color={choice.color}
+                              active={selectedRipeness === choice.value}
+                              disabled={isSavingThisRow}
+                              onPress={() => {
+                                setBananaRipenessChoices((prev) => ({
+                                  ...prev,
+                                  [key]: choice.value,
+                                }));
+
+                                // เปลี่ยนความสุกหลักแล้ว ต้องล้างระดับสีเดิม
+                                // กันข้อมูลย้อนแย้ง เช่น ดิบ + น้ำตาล/ดำ
+                                setBananaColorChoices((prev) => ({
+                                  ...prev,
+                                  [key]: "",
+                                }));
+                              }}
+                            />
+                          ))}
+                        </View>
+                      </View>
+
+                      <View style={{ gap: 8 }}>
                         <Text
                           style={{
-                            color: "#6B7280",
-                            fontWeight: "700",
-                            fontSize: 12,
+                            color: "#111827",
+                            fontWeight: "900",
+                            fontSize: 15,
                           }}
                         >
-                          คะแนนล่าสุด: {row.user_rating} ดาว
+                          2) เลือกระดับสี
                         </Text>
-                      )}
 
-                      {!!row.comment_updated_at && (
-                        <Text
+                        {selectedRipeness ? (
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              flexWrap: "wrap",
+                              gap: 8,
+                            }}
+                          >
+                            {colorOptions.map((choice) => (
+                              <ChoicePill
+                                key={choice.value}
+                                label={choice.label}
+                                color={selectedRipenessChoice?.color ?? "#16A34A"}
+                                active={selectedColorLevel === choice.value}
+                                disabled={isSavingThisRow}
+                                onPress={() => {
+                                  setBananaColorChoices((prev) => ({
+                                    ...prev,
+                                    [key]: choice.value,
+                                  }));
+                                }}
+                              />
+                            ))}
+                          </View>
+                        ) : (
+                          <Text
+                            style={{
+                              color: "#9CA3AF",
+                              fontWeight: "700",
+                            }}
+                          >
+                            เลือกความสุกก่อน แล้วระบบจะแสดงช้อยท์ระดับสีที่เกี่ยวข้อง
+                          </Text>
+                        )}
+                      </View>
+
+                      {!!row.user_selected_ripeness && (
+                        <View
                           style={{
-                            color: "#9CA3AF",
-                            fontWeight: "700",
-                            fontSize: 12,
+                            backgroundColor: "#FFFFFF",
+                            borderRadius: 12,
+                            padding: 10,
+                            borderWidth: 1,
+                            borderColor: "#E5E7EB",
+                            gap: 4,
                           }}
                         >
-                          อัปเดตล่าสุด: {formatDate(row.comment_updated_at)}
-                        </Text>
+                          <Text
+                            style={{
+                              color: "#374151",
+                              fontWeight: "800",
+                              fontSize: 12,
+                            }}
+                          >
+                            คำตอบล่าสุดของผู้ใช้:{" "}
+                            {getChoiceLabel(
+                              RIPENESS_CHOICES,
+                              row.user_selected_ripeness
+                            )}{" "}
+                            /{" "}
+                            {getChoiceLabel(
+                              COLOR_LEVEL_CHOICES[row.user_selected_ripeness] ?? [],
+                              row.user_selected_color_level
+                            )}
+                          </Text>
+
+                          {!!row.feedback_updated_at && (
+                            <Text
+                              style={{
+                                color: "#9CA3AF",
+                                fontWeight: "700",
+                                fontSize: 12,
+                              }}
+                            >
+                              อัปเดตล่าสุด: {formatDate(row.feedback_updated_at)}
+                            </Text>
+                          )}
+                        </View>
                       )}
 
                       <Pressable
@@ -2097,7 +2213,7 @@ export default function HomeScreen() {
                             fontWeight: "900",
                           }}
                         >
-                          {isSavingThisRow ? "กำลังบันทึก..." : "บันทึกคอมเมนต์"}
+                          {isSavingThisRow ? "กำลังบันทึก..." : "บันทึกผลแก้ไข"}
                         </Text>
                       </Pressable>
                     </View>

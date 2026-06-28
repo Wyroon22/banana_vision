@@ -9,7 +9,6 @@ import {
   SafeAreaView,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -17,6 +16,36 @@ import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "../lib/supabase";
 
 const API_BASE = "http://172.20.10.2:8000";
+
+const RIPENESS_CHOICES = [
+  { value: "green", label: "ดิบ" },
+  { value: "breaker", label: "ห่าม" },
+  { value: "ripe", label: "สุก" },
+  { value: "overripe", label: "งอม" },
+];
+
+const COLOR_LEVEL_CHOICES: Record<string, { value: string; label: string }[]> = {
+  green: [
+    { value: "dark_green", label: "เขียวเข้ม" },
+    { value: "light_green", label: "เขียวอ่อน" },
+    { value: "pale_green", label: "เขียวซีด" },
+  ],
+  breaker: [
+    { value: "green_yellow", label: "เขียวอมเหลือง" },
+    { value: "yellow_green", label: "เหลืองอมเขียว" },
+    { value: "partial_yellow", label: "เหลืองบางส่วน" },
+  ],
+  ripe: [
+    { value: "yellow", label: "เหลืองล้วน" },
+    { value: "golden_yellow", label: "เหลืองทอง" },
+    { value: "light_spots", label: "เหลืองมีจุดดำนิดหน่อย" },
+  ],
+  overripe: [
+    { value: "many_black_spots", label: "จุดดำเยอะ" },
+    { value: "brown_yellow", label: "น้ำตาลปนเหลือง" },
+    { value: "brown_black", label: "น้ำตาล/ดำ" },
+  ],
+};
 
 function safeJson(value: any) {
   if (!value) return {};
@@ -119,6 +148,37 @@ function getRipenessColor(label: string) {
   return "#111827";
 }
 
+function getChoiceColor(value?: string | null) {
+  if (value === "green" || value === "dark_green" || value === "light_green" || value === "pale_green") {
+    return "#15803D";
+  }
+
+  if (value === "breaker" || value === "green_yellow" || value === "yellow_green" || value === "partial_yellow") {
+    return "#B45309";
+  }
+
+  if (value === "ripe" || value === "yellow" || value === "golden_yellow" || value === "light_spots") {
+    return "#EA580C";
+  }
+
+  if (value === "overripe" || value === "many_black_spots" || value === "brown_yellow" || value === "brown_black") {
+    return "#DC2626";
+  }
+
+  return "#111827";
+}
+
+function getRipenessChoiceLabel(value?: string | null) {
+  if (!value) return "-";
+  return RIPENESS_CHOICES.find((item) => item.value === value)?.label ?? value;
+}
+
+function getColorChoiceLabel(ripeness?: string | null, colorLevel?: string | null) {
+  if (!colorLevel) return "-";
+  const choices = COLOR_LEVEL_CHOICES[String(ripeness ?? "")] ?? [];
+  return choices.find((item) => item.value === colorLevel)?.label ?? colorLevel;
+}
+
 
 // แปลงค่า confidence จากฐานข้อมูลเช่น 0.92 ให้เป็บ 92%
 function getConfidence(row: any) {
@@ -164,45 +224,50 @@ function getBBoxText(row: any) {
   return "-";
 }
 
-function StarRating({
-  value,
-  onChange,
+function ChoicePill({
+  label,
+  active,
+  color,
   disabled = false,
+  onPress,
 }: {
-  value: number;
-  onChange: (value: number) => void;
+  label: string;
+  active: boolean;
+  color: string;
   disabled?: boolean;
+  onPress: () => void;
 }) {
   return (
-    <View style={{ flexDirection: "row", gap: 8 }}>
-      {[1, 2, 3, 4, 5].map((star) => {
-        const active = star <= value;
-
-        return (
-          <Pressable
-            key={star}
-            disabled={disabled}
-            onPress={() => onChange(star)}
-            style={({ pressed }) => [
-              {
-                opacity: disabled ? 0.45 : pressed ? 0.65 : 1,
-                transform: pressed ? [{ scale: 0.9 }] : [{ scale: 1 }],
-              },
-            ]}
-          >
-            <Text
-              style={{
-                fontSize: 34,
-                color: active ? "#F59E0B" : "#D1D5DB",
-                fontWeight: "900",
-              }}
-            >
-              {active ? "★" : "☆"}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        {
+          paddingVertical: 10,
+          paddingHorizontal: 14,
+          borderRadius: 999,
+          backgroundColor: active ? color : "#FFFFFF",
+          borderWidth: 2,
+          borderColor: active ? color : "#D1D5DB",
+          opacity: disabled ? 0.5 : 1,
+        },
+        pressed &&
+          !disabled && {
+            opacity: 0.8,
+            transform: [{ scale: 0.96 }],
+          },
+      ]}
+    >
+      <Text
+        style={{
+          color: active ? "#FFFFFF" : color,
+          fontWeight: "900",
+          fontSize: 16,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -221,10 +286,10 @@ export default function ScanDetailScreen() {
   const [errorMsg, setErrorMsg] = useState("");
   
   
-  // [STEP 10] เก็บคอมเมนต์รายลูกตาม id ของ scan_details
-  const [comments, setComments] = useState<Record<string, string>>({});
-  const [savingCommentId, setSavingCommentId] = useState<string | null>(null);
-  const [ratings, setRatings] = useState<Record<string, number>>({});
+  // [FEEDBACK] เก็บช้อยท์แก้ label รายลูกตาม id ของ scan_details
+  const [ripenessChoices, setRipenessChoices] = useState<Record<string, string>>({});
+  const [colorChoices, setColorChoices] = useState<Record<string, string>>({});
+  const [savingFeedbackId, setSavingFeedbackId] = useState<string | null>(null);
 
   const loadDetail = useCallback(async () => {
     try {
@@ -278,19 +343,19 @@ export default function ScanDetailScreen() {
 
       setDetails(detailRows);
 
-      // [STEP 10] เตรียมคอมเมนต์เดิม + คะแนนดาวเดิมของแต่ละลูกให้ UI
-      const nextComments: Record<string, string> = {};
-      const nextRatings: Record<string, number> = {};
+      // [FEEDBACK] เตรียมช้อยท์เดิมของแต่ละลูกให้ UI
+      const nextRipenessChoices: Record<string, string> = {};
+      const nextColorChoices: Record<string, string> = {};
 
       detailRows.forEach((row, index) => {
         const key = String(row.id ?? index);
 
-        nextComments[key] = row.user_comment ?? "";
-        nextRatings[key] = Number(row.user_rating ?? 0);
+        nextRipenessChoices[key] = row.user_selected_ripeness ?? "";
+        nextColorChoices[key] = row.user_selected_color_level ?? "";
       });
 
-      setComments(nextComments);
-      setRatings(nextRatings);
+      setRipenessChoices(nextRipenessChoices);
+      setColorChoices(nextColorChoices);
     } catch (err: any) {
       setErrorMsg(err?.message || "โหลดรายละเอียดไม่สำเร็จ");
     } finally {
@@ -302,8 +367,8 @@ export default function ScanDetailScreen() {
     loadDetail();
   }, [loadDetail]);
 
-  // [STEP 10] บันทึกคอมเมนต์ + คะแนนดาวรายลูกลง scan_details
-  const handleSaveComment = async (row: any, index: number) => {
+  // [FEEDBACK] บันทึกผลแก้ไขแบบช้อยท์ลง scan_details
+  const handleSaveFeedback = async (row: any, index: number) => {
     const detailId = row.id ?? row.detail_id ?? row.scan_detail_id;
 
     if (!detailId) {
@@ -312,24 +377,36 @@ export default function ScanDetailScreen() {
     }
 
     const key = String(detailId);
-    const text = comments[key]?.trim() ?? "";
-    const rating = Number(ratings[key] ?? 0);
+    const selectedRipeness = ripenessChoices[key] ?? "";
+    const selectedColorLevel = colorChoices[key] ?? "";
+
+    if (!selectedRipeness) {
+      Alert.alert("ยังไม่ได้เลือกความสุก", "กรุณาเลือก ดิบ / ห่าม / สุก / งอม ก่อน");
+      return;
+    }
+
+    if (!selectedColorLevel) {
+      Alert.alert("ยังไม่ได้เลือกระดับสี", "กรุณาเลือกระดับสีของกล้วยลูกนี้ก่อน");
+      return;
+    }
 
     try {
-      setSavingCommentId(key);
+      setSavingFeedbackId(key);
 
       const now = new Date().toISOString();
 
       const { data: updatedRow, error } = await supabase
         .from("scan_details")
         .update({
-          user_comment: text || null,
-          user_rating: rating > 0 ? rating : null,
-          comment_updated_at: now,
+          user_selected_ripeness: selectedRipeness,
+          user_selected_color_level: selectedColorLevel,
+          feedback_updated_at: now,
         })
         .eq("id", detailId)
         .eq("scan_id", scanId)
-        .select("id, user_comment, user_rating, comment_updated_at")
+        .select(
+          "id, user_selected_ripeness, user_selected_color_level, feedback_updated_at"
+        )
         .single();
 
       if (error) {
@@ -340,38 +417,37 @@ export default function ScanDetailScreen() {
         throw new Error("ไม่พบแถวที่ถูกอัปเดตใน scan_details");
       }
 
-      // [STEP 10] อัปเดต UI ทันทีหลังบันทึก ด้วยค่าที่ Supabase ส่งกลับมา
       setDetails((prev) =>
         prev.map((item) =>
           item.id === detailId
             ? {
                 ...item,
-                user_comment: updatedRow.user_comment,
-                user_rating: updatedRow.user_rating,
-                comment_updated_at: updatedRow.comment_updated_at,
+                user_selected_ripeness: updatedRow.user_selected_ripeness,
+                user_selected_color_level: updatedRow.user_selected_color_level,
+                feedback_updated_at: updatedRow.feedback_updated_at,
               }
             : item
         )
       );
 
-      setComments((prev) => ({
+      setRipenessChoices((prev) => ({
         ...prev,
-        [key]: updatedRow.user_comment ?? "",
+        [key]: updatedRow.user_selected_ripeness ?? "",
       }));
 
-      setRatings((prev) => ({
+      setColorChoices((prev) => ({
         ...prev,
-        [key]: Number(updatedRow.user_rating ?? 0),
+        [key]: updatedRow.user_selected_color_level ?? "",
       }));
 
-      Alert.alert("บันทึกสำเร็จ", `บันทึกกล้วยลูกที่ ${index + 1} แล้ว`);
+      Alert.alert("บันทึกสำเร็จ", `บันทึกผลแก้ไขกล้วยลูกที่ ${index + 1} แล้ว`);
     } catch (err: any) {
       Alert.alert(
         "บันทึกไม่สำเร็จ",
         err?.message || "กรุณาลองใหม่อีกครั้ง"
       );
     } finally {
-      setSavingCommentId(null);
+      setSavingFeedbackId(null);
     }
   };
 
@@ -481,7 +557,7 @@ export default function ScanDetailScreen() {
               marginTop: 4,
             }}
           >
-            รายละเอียดผลการตรวจรายลูก พร้อมคอมเมนต์แยกแต่ละลูก
+            รายละเอียดผลการตรวจรายลูก พร้อมผลแก้ไขจากผู้ใช้
           </Text>
         </View>
 
@@ -645,8 +721,13 @@ export default function ScanDetailScreen() {
               const labelColor = getRipenessColor(label);
               const confidence = getConfidence(row); //ดึงค่าความมั่นใจของ AI จากข้อมูลกล้วยแต่ละลูก
               const bboxText = getBBoxText(row);
-              const commentKey = String(row.id ?? index);
-              const isSavingThisRow = savingCommentId === commentKey;
+              const detailKey = String(row.id ?? index);
+              const isSavingThisRow = savingFeedbackId === detailKey;
+              const selectedRipeness = ripenessChoices[detailKey] ?? "";
+              const selectedColorLevel = colorChoices[detailKey] ?? "";
+              const colorOptions = selectedRipeness
+                ? COLOR_LEVEL_CHOICES[selectedRipeness] ?? []
+                : [];
 
               return (
                 <View
@@ -720,11 +801,11 @@ export default function ScanDetailScreen() {
                     BBox: {bboxText}
                   </Text>
 
-                  {/* [STEP 10] ช่องคอมเมนต์รายลูก */}
+                  {/* [FEEDBACK] ผู้ใช้แก้ label ด้วยช้อยท์ */}
                   <View
                     style={{
                       marginTop: 8,
-                      gap: 8,
+                      gap: 10,
                       backgroundColor: "#F9FAFB",
                       borderRadius: 14,
                       padding: 12,
@@ -736,97 +817,124 @@ export default function ScanDetailScreen() {
                       style={{
                         color: "#111827",
                         fontWeight: "900",
-                        fontSize: 15,
+                        fontSize: 16,
                       }}
                     >
-                      ⭐ ให้คะแนนกล้วยลูกนี้
+                      1) ผู้ใช้เลือกความสุกที่ถูกต้อง
                     </Text>
 
-                    <StarRating
-                      value={ratings[commentKey] ?? 0}
-                      disabled={isSavingThisRow}
-                      onChange={(value) => {
-                        setRatings((prev) => ({
-                          ...prev,
-                          [commentKey]: value,
-                        }));
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: 10,
                       }}
-                    />
+                    >
+                      {RIPENESS_CHOICES.map((choice) => (
+                        <ChoicePill
+                          key={choice.value}
+                          label={choice.label}
+                          active={selectedRipeness === choice.value}
+                          color={getChoiceColor(choice.value)}
+                          disabled={isSavingThisRow}
+                          onPress={() => {
+                            setRipenessChoices((prev) => ({
+                              ...prev,
+                              [detailKey]: choice.value,
+                            }));
+
+                            // เปลี่ยนความสุกหลักแล้วให้ล้างระดับสีเดิม
+                            setColorChoices((prev) => ({
+                              ...prev,
+                              [detailKey]: "",
+                            }));
+                          }}
+                        />
+                      ))}
+                    </View>
 
                     <Text
                       style={{
                         color: "#111827",
                         fontWeight: "900",
-                        fontSize: 15,
+                        fontSize: 16,
                         marginTop: 4,
                       }}
                     >
-                      📝 คอมเมนต์รายลูก
+                      2) เลือกระดับสี
                     </Text>
 
-                    <TextInput
-                      value={comments[commentKey] ?? ""}
-                      onChangeText={(text) => {
-                        setComments((prev) => ({
-                          ...prev,
-                          [commentKey]: text,
-                        }));
-                      }}
-                      placeholder={`เขียนคอมเมนต์สำหรับกล้วยลูกที่ ${index + 1}`}
-                      placeholderTextColor="#9CA3AF"
-                      multiline
-                      style={{
-                        minHeight: 80,
-                        backgroundColor: "#FFFFFF",
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: "#D1D5DB",
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        color: "#111827",
-                        fontWeight: "700",
-                        textAlignVertical: "top",
-                      }}
-                    />
-
-                    {!!row.user_comment && (
+                    {selectedRipeness ? (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          flexWrap: "wrap",
+                          gap: 10,
+                        }}
+                      >
+                        {colorOptions.map((choice) => (
+                          <ChoicePill
+                            key={choice.value}
+                            label={choice.label}
+                            active={selectedColorLevel === choice.value}
+                            color={getChoiceColor(choice.value)}
+                            disabled={isSavingThisRow}
+                            onPress={() => {
+                              setColorChoices((prev) => ({
+                                ...prev,
+                                [detailKey]: choice.value,
+                              }));
+                            }}
+                          />
+                        ))}
+                      </View>
+                    ) : (
                       <Text
                         style={{
                           color: "#6B7280",
                           fontWeight: "700",
-                          fontSize: 12,
                         }}
                       >
-                        คอมเมนต์ล่าสุด: {row.user_comment}
+                        เลือกความสุกก่อน แล้วระบบจะแสดงระดับสีที่เกี่ยวข้อง
                       </Text>
                     )}
 
-                    {!!row.user_rating && (
-                      <Text
+                    {!!row.user_selected_ripeness && !!row.user_selected_color_level && (
+                      <View
                         style={{
-                          color: "#6B7280",
-                          fontWeight: "700",
-                          fontSize: 12,
+                          backgroundColor: "#FFFFFF",
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: "#E5E7EB",
+                          padding: 10,
+                          gap: 4,
                         }}
                       >
-                        คะแนนล่าสุด: {row.user_rating} ดาว
-                      </Text>
-                    )}
+                        <Text
+                          style={{
+                            color: "#374151",
+                            fontWeight: "900",
+                          }}
+                        >
+                          คำตอบล่าสุดของผู้ใช้: {getRipenessChoiceLabel(row.user_selected_ripeness)} / {getColorChoiceLabel(row.user_selected_ripeness, row.user_selected_color_level)}
+                        </Text>
 
-                    {!!row.comment_updated_at && (
-                      <Text
-                        style={{
-                          color: "#9CA3AF",
-                          fontWeight: "700",
-                          fontSize: 12,
-                        }}
-                      >
-                        อัปเดตล่าสุด: {formatDate(row.comment_updated_at)}
-                      </Text>
+                        {!!row.feedback_updated_at && (
+                          <Text
+                            style={{
+                              color: "#9CA3AF",
+                              fontWeight: "700",
+                              fontSize: 12,
+                            }}
+                          >
+                            อัปเดตล่าสุด: {formatDate(row.feedback_updated_at)}
+                          </Text>
+                        )}
+                      </View>
                     )}
 
                     <Pressable
-                      onPress={() => handleSaveComment(row, index)}
+                      onPress={() => handleSaveFeedback(row, index)}
                       disabled={isSavingThisRow}
                       style={({ pressed }) => [
                         {
@@ -852,7 +960,7 @@ export default function ScanDetailScreen() {
                       >
                         {isSavingThisRow
                           ? "กำลังบันทึก..."
-                          : "บันทึกคอมเมนต์"}
+                          : "บันทึกผลแก้ไข"}
                       </Text>
                     </Pressable>
                   </View>
