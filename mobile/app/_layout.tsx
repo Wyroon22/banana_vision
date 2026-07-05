@@ -90,8 +90,42 @@ export default function RootLayout() {
             headerShown: false,
           }}
         />
-      </Stack>
 
+        <Stack.Screen
+          name="admin/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="admin/users"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="admin/scans"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="admin/bananas"
+          options={{
+            headerShown: false,
+        }}
+        />
+
+        <Stack.Screen
+          name="admin/corrections"
+          options={{
+            headerShown: false,
+          }}
+        />
+      </Stack>
       <StatusBar style="light" />
     </ThemeProvider>
   );

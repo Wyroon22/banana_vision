@@ -58,61 +58,84 @@ export default function LoginScreen() {
     }
   };
 
-  // [STEP 3.4] Login จริงผ่าน Supabase Auth
+  //login 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert("แจ้งเตือน", "กรุณากรอก Email และ Password");
-      return;
+  if (!email.trim() || !password.trim()) {
+    Alert.alert("แจ้งเตือน", "กรุณากรอก Email และ Password");
+    return;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  const emailRegex = /\S+@\S+\.\S+/;
+  if (!emailRegex.test(cleanEmail)) {
+    Alert.alert("ข้อผิดพลาด", "รูปแบบอีเมลไม่ถูกต้อง");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    // Login เข้า Supabase Auth
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password,
+    });
+
+    if (error) {
+      throw error;
     }
 
-    const cleanEmail = email.trim().toLowerCase();
+    const userId = data?.user?.id;
 
-    const emailRegex = /\S+@\S+\.\S+/;
-    if (!emailRegex.test(cleanEmail)) {
-      Alert.alert("ข้อผิดพลาด", "รูปแบบอีเมลไม่ถูกต้อง");
-      return;
+    if (!userId) {
+      throw new Error("ไม่พบข้อมูลผู้ใช้");
     }
 
-    try {
-      setLoading(true);
+    // ดึง role จากตาราง profiles
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
 
-      // [STEP 3.4] ยิง Login จริงเข้า Supabase
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+    if (profileError) {
+      throw profileError;
+    }
 
-      if (error) {
-        throw error;
-      }
+    const role = profile?.role || "member";
 
-      // [STEP 3.4] ถ้า Login สำเร็จ จะได้ user/session กลับมา
-      if (!data?.user) {
-        Alert.alert("เข้าสู่ระบบไม่สำเร็จ", "ไม่พบข้อมูลผู้ใช้");
-        return;
-      }
-
+    if (role === "admin") {
+      Alert.alert(
+        "เข้าสู่ระบบสำเร็จ",
+        "ยินดีต้อนรับ Admin",
+        [
+          {
+            text: "ตกลง",
+            onPress: () => router.replace("/admin"),
+          },
+        ]
+      );
+    } else {
       Alert.alert(
         "เข้าสู่ระบบสำเร็จ",
         `ยินดีต้อนรับ\n${data.user.email}`,
         [
           {
             text: "ตกลง",
-
-            // [STEP 3.4] Login สำเร็จ กลับหน้า Home
-            // Step 4 ค่อยทำให้ Home เปลี่ยนเป็นโหมด Member + ปุ่ม Logout
             onPress: () => router.replace("/"),
           },
         ]
       );
-    } catch (err) {
-      Alert.alert(
-        "เข้าสู่ระบบไม่สำเร็จ",
-        err?.message || "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
-      );
-    } finally {
-      setLoading(false);
     }
+  } catch (err) {
+    Alert.alert(
+      "เข้าสู่ระบบไม่สำเร็จ",
+      err?.message || "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
+    );
+  } finally {
+    setLoading(false);
+  }
   };
 
   return (
