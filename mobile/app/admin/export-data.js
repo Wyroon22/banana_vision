@@ -11,7 +11,7 @@ import {
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
-// คง legacy ไว้ เพราะโปรเจกต์เดิมของต้นใช้งานแบบนี้อยู่แล้ว
+// คง legacy ไว้ เพราะโปรเจกต์เดิมใช้งานแบบนี้อยู่แล้ว
 import * as FileSystem from "expo-file-system/legacy";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -22,7 +22,6 @@ import { supabase } from "../../lib/supabase";
 // CSV HELPERS
 // ======================================================
 
-// ป้องกัน CSV / Excel formula injection
 function sanitizeSpreadsheetValue(value) {
   if (value === null || value === undefined) {
     return "";
@@ -30,8 +29,6 @@ function sanitizeSpreadsheetValue(value) {
 
   const text = String(value);
 
-  // ถ้าข้อมูลขึ้นต้นด้วยอักขระที่ Spreadsheet
-  // อาจตีความเป็นสูตร ให้เติม ' ข้างหน้า
   if (/^[=+\-@]/.test(text)) {
     return `'${text}`;
   }
@@ -39,14 +36,11 @@ function sanitizeSpreadsheetValue(value) {
   return text;
 }
 
-// ป้องกัน comma, quote และ newline ทำ CSV พัง
 function csvEscape(value) {
   const safeText = sanitizeSpreadsheetValue(value);
-
   return `"${safeText.replace(/"/g, '""')}"`;
 }
 
-// ป้องกัน HTML พังตอนสร้าง PDF
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -80,9 +74,6 @@ function formatConfidencePercent(value) {
     return "";
   }
 
-  // รองรับทั้งกรณี:
-  // 0.58 -> 58%
-  // 58   -> 58%
   const percent =
     numberValue <= 1
       ? numberValue * 100
@@ -118,7 +109,6 @@ function formatThaiDate(value) {
 
 // ======================================================
 // SUPABASE PAGINATION
-// ดึงข้อมูลครบทีละ batch
 // ======================================================
 
 async function fetchAllRows(
@@ -127,9 +117,7 @@ async function fetchAllRows(
   orderColumn = "created_at"
 ) {
   const allRows = [];
-
   const batchSize = 1000;
-
   let from = 0;
 
   while (true) {
@@ -153,8 +141,6 @@ async function fetchAllRows(
 
     allRows.push(...currentRows);
 
-    // ถ้าน้อยกว่า batchSize
-    // แปลว่าถึงหน้าสุดท้ายแล้ว
     if (currentRows.length < batchSize) {
       break;
     }
@@ -170,26 +156,17 @@ async function fetchAllRows(
 // ======================================================
 
 export default function ExportDataScreen() {
-  // แยกประเภท Loading
-  // null | "pdf" | "csv"
   const [loadingType, setLoadingType] = useState(null);
-
   const isLoading = loadingType !== null;
 
-  // ====================================================
-  // โหลดข้อมูลจริงจาก Supabase
-  // profiles + scan_history + scan_details
-  // ====================================================
-
+  // โหลดข้อมูลรวมทั้ง profiles, scan_history, scan_details และ feedback
   const loadExportRows = async () => {
     const [
       profiles,
       scans,
       details,
+      feedbacks,
     ] = await Promise.all([
-      // -----------------------------
-      // profiles
-      // -----------------------------
       fetchAllRows(
         "profiles",
         `
@@ -200,10 +177,6 @@ export default function ExportDataScreen() {
           created_at
         `
       ),
-
-      // -----------------------------
-      // scan_history
-      // -----------------------------
       fetchAllRows(
         "scan_history",
         `
@@ -221,10 +194,6 @@ export default function ExportDataScreen() {
           result_image_url
         `
       ),
-
-      // -----------------------------
-      // scan_details
-      // -----------------------------
       fetchAllRows(
         "scan_details",
         `
@@ -240,13 +209,20 @@ export default function ExportDataScreen() {
           created_at
         `
       ),
+      fetchAllRows(
+        "feedback",
+        `
+          id,
+          user_id,
+          scan_id,
+          comment,
+          rating,
+          is_correct,
+          created_at
+        `
+      ),
     ]);
 
-    // ==================================================
-    // สร้าง Map เพื่อ Join ข้อมูลใน Front-End
-    // ==================================================
-
-    // profile.id -> profile
     const profileMap = new Map(
       profiles.map((profile) => [
         profile.id,
@@ -254,17 +230,12 @@ export default function ExportDataScreen() {
       ])
     );
 
-    // scan_history.id -> scan
     const scanMap = new Map(
       scans.map((scan) => [
         scan.id,
         scan,
       ])
     );
-
-    // ==================================================
-    // 1 แถว = กล้วย 1 ลูก
-    // ==================================================
 
     const rows = details.map((detail) => {
       const scan =
@@ -274,13 +245,11 @@ export default function ExportDataScreen() {
         ? profileMap.get(scan.user_id) || {}
         : {};
 
-      // AI Label
       const aiRawValue =
         detail.ripeness_th ||
         detail.ripeness_label ||
         "";
 
-      // User Correction
       const userSelectedRaw =
         detail.user_selected_ripeness || "";
 
@@ -288,126 +257,59 @@ export default function ExportDataScreen() {
         Boolean(detail.user_selected_ripeness);
 
       return {
-        // ==========================
-        // Scan
-        // ==========================
-
-        scan_id:
-          detail.scan_id || "",
-
-        scan_created_at:
-          scan.created_at || "",
-
-        // ==========================
-        // User
-        // ==========================
-
-        user_id:
-          scan.user_id || "",
-
-        user_email:
-          profile.email || "",
-
-        user_display_name:
-          profile.display_name || "",
-
-        user_role:
-          profile.role || "",
-
-        guest_id:
-          scan.guest_id || "",
-
-        // ==========================
-        // Banana Detail
-        // ==========================
-
-        banana_detail_id:
-          detail.id || "",
-
-        banana_index:
-          detail.banana_index ?? "",
-
-        // ==========================
-        // AI Prediction
-        // ==========================
-
-        ai_ripeness_label:
-          detail.ripeness_label || "",
-
-        ai_ripeness_th:
-          detail.ripeness_th || "",
-
-        ai_ripeness_display:
-          toThaiRipeness(aiRawValue),
-
-        confidence_raw:
-          detail.confidence ?? "",
-
-        confidence_percent:
-          formatConfidencePercent(
-            detail.confidence
-          ),
-
-        // ==========================
-        // User Correction
-        // ==========================
-
-        user_selected_ripeness:
-          userSelectedRaw,
-
+        scan_id: detail.scan_id || "",
+        scan_created_at: scan.created_at || "",
+        user_id: scan.user_id || "",
+        user_email: profile.email || "",
+        user_display_name: profile.display_name || "",
+        user_role: profile.role || "",
+        guest_id: scan.guest_id || "",
+        banana_detail_id: detail.id || "",
+        banana_index: detail.banana_index ?? "",
+        ai_ripeness_label: detail.ripeness_label || "",
+        ai_ripeness_th: detail.ripeness_th || "",
+        ai_ripeness_display: toThaiRipeness(aiRawValue),
+        confidence_raw: detail.confidence ?? "",
+        confidence_percent: formatConfidencePercent(
+          detail.confidence
+        ),
+        user_selected_ripeness: userSelectedRaw,
         user_selected_ripeness_display:
           toThaiRipeness(userSelectedRaw),
-
         user_selected_color_level:
-          detail.user_selected_color_level ||
-          "",
-
-        is_corrected:
-          hasCorrection
-            ? "true"
-            : "false",
-
+          detail.user_selected_color_level || "",
+        is_corrected: hasCorrection ? "true" : "false",
         feedback_updated_at:
           detail.feedback_updated_at || "",
-
-        // ==========================
-        // Scan Summary
-        // ==========================
-
-        total_bananas:
-          scan.total_bananas ?? "",
-
-        green_count:
-          scan.green_count ?? "",
-
-        breaker_count:
-          scan.breaker_count ?? "",
-
-        ripe_count:
-          scan.ripe_count ?? "",
-
-        overripe_count:
-          scan.overripe_count ?? "",
-
-        inference_ms:
-          scan.inference_ms ?? "",
-
-        // ==========================
-        // Images
-        // ==========================
-
+        total_bananas: scan.total_bananas ?? "",
+        green_count: scan.green_count ?? "",
+        breaker_count: scan.breaker_count ?? "",
+        ripe_count: scan.ripe_count ?? "",
+        overripe_count: scan.overripe_count ?? "",
+        inference_ms: scan.inference_ms ?? "",
         original_image_url:
           scan.original_image_url || "",
-
         result_image_url:
           scan.result_image_url || "",
+        detail_created_at: detail.created_at || "",
+      };
+    });
 
-        // ==========================
-        // Detail Date
-        // ==========================
+    const feedbackRows = feedbacks.map((fb) => {
+      const profile = fb.user_id
+        ? profileMap.get(fb.user_id) || {}
+        : {};
 
-        detail_created_at:
-          detail.created_at || "",
+      return {
+        feedback_id: fb.id || "",
+        user_id: fb.user_id || "",
+        user_email: profile.email || "",
+        user_display_name: profile.display_name || "",
+        scan_id: fb.scan_id || "",
+        comment: fb.comment || "",
+        rating: fb.rating ?? "",
+        is_correct: fb.is_correct ? "true" : "false",
+        created_at: fb.created_at || "",
       };
     });
 
@@ -415,14 +317,14 @@ export default function ExportDataScreen() {
       profiles,
       scans,
       details,
+      feedbacks,
       rows,
+      feedbackRows,
     };
   };
 
   // ====================================================
-  // PDF
-  // ตอนนี้ยังคง PDF เดิมไว้
-  // แต่ใช้ข้อมูลจริงจาก loadExportRows
+  // PDF EXPORT
   // ====================================================
 
   const handleExportPDF = async () => {
@@ -437,85 +339,48 @@ export default function ExportDataScreen() {
         profiles,
         scans,
         details,
+        feedbacks,
         rows,
+        feedbackRows,
       } = await loadExportRows();
 
-      if (rows.length === 0) {
+      if (rows.length === 0 && feedbackRows.length === 0) {
         Alert.alert(
           "ยังไม่มีข้อมูล",
-          "ยังไม่มี scan_details สำหรับส่งออก"
+          "ยังไม่มีข้อมูลสำหรับส่งออกในระบบ"
         );
-
         return;
       }
 
-      // ป้องกัน PDF หนักเกินไป
-      // แสดงตัวอย่าง 200 รายการล่าสุด
-      const pdfRows = rows.slice(0, 200);
-
-      const correctionCount =
-        details.filter(
-          (item) =>
-            Boolean(
-              item.user_selected_ripeness
-            )
-        ).length;
+      const pdfRows = rows.slice(0, 100);
+      const pdfFeedbacks = feedbackRows.slice(0, 100);
 
       const rowsHtml = pdfRows
         .map(
           (item) => `
             <tr>
-              <td>
-                ${escapeHtml(
-                  formatThaiDate(
-                    item.scan_created_at
-                  )
-                )}
-              </td>
+              <td>${escapeHtml(formatThaiDate(item.scan_created_at))}</td>
+              <td>${escapeHtml(item.user_display_name || "-")}</td>
+              <td>${escapeHtml(item.user_email || "-")}</td>
+              <td>${escapeHtml(item.banana_index || "-")}</td>
+              <td>${escapeHtml(item.ai_ripeness_display || "-")}</td>
+              <td>${escapeHtml(item.confidence_percent || "-")}</td>
+              <td>${escapeHtml(item.user_selected_ripeness_display || "-")}</td>
+              <td>${escapeHtml(item.user_selected_color_level || "-")}</td>
+            </tr>
+          `
+        )
+        .join("");
 
-              <td>
-                ${escapeHtml(
-                  item.user_display_name || "-"
-                )}
-              </td>
-
-              <td>
-                ${escapeHtml(
-                  item.user_email || "-"
-                )}
-              </td>
-
-              <td>
-                ${escapeHtml(
-                  item.banana_index || "-"
-                )}
-              </td>
-
-              <td>
-                ${escapeHtml(
-                  item.ai_ripeness_display || "-"
-                )}
-              </td>
-
-              <td>
-                ${escapeHtml(
-                  item.confidence_percent || "-"
-                )}
-              </td>
-
-              <td>
-                ${escapeHtml(
-                  item.user_selected_ripeness_display ||
-                    "-"
-                )}
-              </td>
-
-              <td>
-                ${escapeHtml(
-                  item.user_selected_color_level ||
-                    "-"
-                )}
-              </td>
+      const feedbackRowsHtml = pdfFeedbacks
+        .map(
+          (fb) => `
+            <tr>
+              <td>${escapeHtml(formatThaiDate(fb.created_at))}</td>
+              <td>${escapeHtml(fb.user_display_name || fb.user_email || "-")}</td>
+              <td>${escapeHtml(fb.rating || "-")} ดาว</td>
+              <td>${escapeHtml(fb.is_correct === "true" ? "ถูกต้อง" : "ไม่ถูกต้อง")}</td>
+              <td>${escapeHtml(fb.comment || "-")}</td>
             </tr>
           `
         )
@@ -529,171 +394,51 @@ export default function ExportDataScreen() {
 
       const htmlContent = `
         <!DOCTYPE html>
-
         <html>
           <head>
             <meta charset="utf-8" />
-
             <style>
-              body {
-                font-family:
-                  Helvetica,
-                  Arial,
-                  sans-serif;
-
-                padding: 24px;
-
-                color: #1e293b;
-              }
-
-              h1 {
-                text-align: center;
-
-                color: #0f172a;
-
-                margin-bottom: 6px;
-              }
-
-              .subtitle {
-                text-align: center;
-
-                color: #64748b;
-
-                margin-bottom: 24px;
-              }
-
-              .summary {
-                display: flex;
-
-                gap: 10px;
-
-                margin-bottom: 20px;
-              }
-
-              .summary-card {
-                flex: 1;
-
-                border: 1px solid #e2e8f0;
-
-                border-radius: 10px;
-
-                padding: 12px;
-
-                background: #f8fafc;
-              }
-
-              .summary-label {
-                font-size: 11px;
-
-                color: #64748b;
-              }
-
-              .summary-value {
-                margin-top: 4px;
-
-                font-size: 20px;
-
-                font-weight: bold;
-
-                color: #0f172a;
-              }
-
-              table {
-                width: 100%;
-
-                border-collapse: collapse;
-
-                margin-top: 15px;
-              }
-
-              th {
-                background-color: #f8fafc;
-
-                padding: 7px;
-
-                border: 1px solid #cbd5e1;
-
-                font-size: 10px;
-              }
-
-              td {
-                padding: 7px;
-
-                border: 1px solid #e2e8f0;
-
-                font-size: 9px;
-              }
-
-              .note {
-                margin-top: 16px;
-
-                color: #64748b;
-
-                font-size: 10px;
-              }
+              body { font-family: Helvetica, Arial, sans-serif; padding: 24px; color: #1e293b; }
+              h1 { text-align: center; color: #0f172a; margin-bottom: 6px; }
+              .subtitle { text-align: center; color: #64748b; margin-bottom: 24px; }
+              .summary { display: flex; gap: 10px; margin-bottom: 20px; }
+              .summary-card { flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; background: #f8fafc; }
+              .summary-label { font-size: 11px; color: #64748b; }
+              .summary-value { margin-top: 4px; font-size: 18px; font-weight: bold; color: #0f172a; }
+              h2 { margin-top: 24px; font-size: 16px; color: #0f172a; }
+              table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+              th { background-color: #f8fafc; padding: 6px; border: 1px solid #cbd5e1; font-size: 10px; }
+              td { padding: 6px; border: 1px solid #e2e8f0; font-size: 9px; }
+              .note { margin-top: 16px; color: #64748b; font-size: 10px; }
             </style>
           </head>
-
           <body>
-            <h1>
-              BananaVision
-            </h1>
-
+            <h1>BananaVision</h1>
             <div class="subtitle">
-              รายงานสรุปข้อมูลระบบ
-              <br />
-              วันที่ออกรายงาน:
-              ${escapeHtml(reportDate)}
+              รายงานสรุปข้อมูลระบบและข้อเสนอแนะ<br />
+              วันที่ออกรายงาน: ${escapeHtml(reportDate)}
             </div>
 
             <div class="summary">
-
               <div class="summary-card">
-                <div class="summary-label">
-                  ผู้ใช้ทั้งหมด
-                </div>
-
-                <div class="summary-value">
-                  ${profiles.length}
-                </div>
+                <div class="summary-label">ผู้ใช้ทั้งหมด</div>
+                <div class="summary-value">${profiles.length}</div>
               </div>
-
               <div class="summary-card">
-                <div class="summary-label">
-                  จำนวนครั้งที่ตรวจ
-                </div>
-
-                <div class="summary-value">
-                  ${scans.length}
-                </div>
+                <div class="summary-label">จำนวนสแกน</div>
+                <div class="summary-value">${scans.length}</div>
               </div>
-
               <div class="summary-card">
-                <div class="summary-label">
-                  กล้วยรายลูก
-                </div>
-
-                <div class="summary-value">
-                  ${details.length}
-                </div>
+                <div class="summary-label">กล้วยรายลูก</div>
+                <div class="summary-value">${details.length}</div>
               </div>
-
               <div class="summary-card">
-                <div class="summary-label">
-                  Label Correction
-                </div>
-
-                <div class="summary-value">
-                  ${correctionCount}
-                </div>
+                <div class="summary-label">ความคิดเห็น</div>
+                <div class="summary-value">${feedbacks.length}</div>
               </div>
-
             </div>
 
-            <h2>
-              รายละเอียดล่าสุด
-            </h2>
-
+            <h2>รายละเอียดการตรวจสอบกล้วย (ล่าสุด)</h2>
             <table>
               <thead>
                 <tr>
@@ -702,22 +447,34 @@ export default function ExportDataScreen() {
                   <th>อีเมล</th>
                   <th>ลูกที่</th>
                   <th>AI</th>
-                  <th>Confidence</th>
-                  <th>ผู้ใช้แก้เป็น</th>
+                  <th>Conf.</th>
+                  <th>แก้เป็น</th>
                   <th>ระดับสี</th>
                 </tr>
               </thead>
-
               <tbody>
-                ${rowsHtml}
+                ${rowsHtml || `<tr><td colspan="8" style="text-align:center;">ไม่มีข้อมูล</td></tr>`}
+              </tbody>
+            </table>
+
+            <h2>ความคิดเห็นและฟีดแบ็กจากผู้ใช้งาน (ล่าสุด)</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>วันที่</th>
+                  <th>ผู้ใช้งาน</th>
+                  <th>คะแนน</th>
+                  <th>ความถูกต้อง</th>
+                  <th>ความคิดเห็น</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${feedbackRowsHtml || `<tr><td colspan="5" style="text-align:center;">ไม่มีความคิดเห็น</td></tr>`}
               </tbody>
             </table>
 
             <div class="note">
-              หมายเหตุ:
-              PDF แสดงรายละเอียดล่าสุดไม่เกิน
-              200 รายการเพื่อป้องกันไฟล์มีขนาดใหญ่เกินไป
-              ส่วน CSV จะส่งออกข้อมูลทั้งหมด
+              หมายเหตุ: PDF แสดงผลการตรวจและคอมเมนต์ล่าสุดไม่เกิน 100 รายการ เพื่อป้องกันไฟล์ขนาดใหญ่เกินไป
             </div>
           </body>
         </html>
@@ -736,25 +493,18 @@ export default function ExportDataScreen() {
           "สร้าง PDF สำเร็จ",
           "สร้างไฟล์ PDF แล้ว แต่อุปกรณ์นี้ไม่รองรับ Share Sheet"
         );
-
         return;
       }
 
       await Sharing.shareAsync(uri, {
         mimeType: "application/pdf",
-        dialogTitle:
-          "ส่งออกรายงาน BananaVision",
+        dialogTitle: "ส่งออกรายงาน BananaVision",
       });
     } catch (error) {
-      console.error(
-        "[PDF EXPORT ERROR]",
-        error
-      );
-
+      console.error("[PDF EXPORT ERROR]", error);
       Alert.alert(
         "ส่งออก PDF ไม่สำเร็จ",
-        error?.message ||
-          "กรุณาลองใหม่"
+        error?.message || "กรุณาลองใหม่"
       );
     } finally {
       setLoadingType(null);
@@ -762,8 +512,7 @@ export default function ExportDataScreen() {
   };
 
   // ====================================================
-  // CSV จริง
-  // 1 แถว = กล้วย 1 ลูก
+  // CSV EXPORT
   // ====================================================
 
   const handleExportCSV = async () => {
@@ -774,111 +523,79 @@ export default function ExportDataScreen() {
 
       setLoadingType("csv");
 
-      const { rows } =
+      const { rows, feedbackRows } =
         await loadExportRows();
 
-      if (rows.length === 0) {
+      if (rows.length === 0 && feedbackRows.length === 0) {
         Alert.alert(
           "ยังไม่มีข้อมูล",
-          "ยังไม่มี scan_details สำหรับส่งออก"
+          "ยังไม่มีข้อมูลสำหรับส่งออก"
         );
-
         return;
       }
 
-      // ==================================================
-      // CSV HEADER
-      // ==================================================
-
-      const header = [
+      const scanHeader = [
         "scan_id",
         "scan_created_at",
-
         "user_id",
         "user_email",
         "user_display_name",
         "user_role",
         "guest_id",
-
         "banana_detail_id",
         "banana_index",
-
         "ai_ripeness_label",
         "ai_ripeness_th",
         "ai_ripeness_display",
-
         "confidence_raw",
         "confidence_percent",
-
         "user_selected_ripeness",
         "user_selected_ripeness_display",
         "user_selected_color_level",
-
         "is_corrected",
         "feedback_updated_at",
-
         "total_bananas",
         "green_count",
         "breaker_count",
         "ripe_count",
         "overripe_count",
-
         "inference_ms",
-
         "original_image_url",
         "result_image_url",
-
         "detail_created_at",
       ];
 
-      // ==================================================
-      // CSV ROWS
-      // ==================================================
-
-      const csvLines = [
-        header
-          .map(csvEscape)
-          .join(","),
-
+      const scanCsvLines = [
+        scanHeader.map(csvEscape).join(","),
         ...rows.map((row) =>
           [
             row.scan_id,
             row.scan_created_at,
-
             row.user_id,
             row.user_email,
             row.user_display_name,
             row.user_role,
             row.guest_id,
-
             row.banana_detail_id,
             row.banana_index,
-
             row.ai_ripeness_label,
             row.ai_ripeness_th,
             row.ai_ripeness_display,
-
             row.confidence_raw,
             row.confidence_percent,
-
             row.user_selected_ripeness,
             row.user_selected_ripeness_display,
             row.user_selected_color_level,
-
             row.is_corrected,
             row.feedback_updated_at,
-
             row.total_bananas,
             row.green_count,
             row.breaker_count,
             row.ripe_count,
             row.overripe_count,
-
             row.inference_ms,
-
             row.original_image_url,
             row.result_image_url,
-
             row.detail_created_at,
           ]
             .map(csvEscape)
@@ -886,21 +603,46 @@ export default function ExportDataScreen() {
         ),
       ];
 
-      // BOM ช่วยให้ Excel อ่านภาษาไทย
-      const csvContent =
-        "\uFEFF" +
-        csvLines.join("\r\n");
+      const feedbackHeader = [
+        "feedback_id",
+        "user_id",
+        "user_email",
+        "user_display_name",
+        "scan_id",
+        "comment",
+        "rating",
+        "is_correct",
+        "created_at",
+      ];
 
-      // ==================================================
-      // FILE NAME
-      // ==================================================
+      const feedbackCsvLines = [
+        feedbackHeader.map(csvEscape).join(","),
+        ...feedbackRows.map((fb) =>
+          [
+            fb.feedback_id,
+            fb.user_id,
+            fb.user_email,
+            fb.user_display_name,
+            fb.scan_id,
+            fb.comment,
+            fb.rating,
+            fb.is_correct,
+            fb.created_at,
+          ]
+            .map(csvEscape)
+            .join(",")
+        ),
+      ];
+
+      const combinedCsvContent =
+        "\uFEFF" +
+        "=== SCAN & CORRECTION DATA ===\r\n" +
+        scanCsvLines.join("\r\n") +
+        "\r\n\r\n=== USER COMMENTS & FEEDBACK ===\r\n" +
+        feedbackCsvLines.join("\r\n");
 
       const fileName =
-        `BananaVision_Export_${createTimestamp()}.csv`;
-
-      // ==================================================
-      // CREATE FILE
-      // ==================================================
+        `BananaVision_Export_All_${createTimestamp()}.csv`;
 
       if (!FileSystem.documentDirectory) {
         throw new Error(
@@ -913,16 +655,12 @@ export default function ExportDataScreen() {
 
       await FileSystem.writeAsStringAsync(
         fileUri,
-        csvContent,
+        combinedCsvContent,
         {
           encoding:
             FileSystem.EncodingType.UTF8,
         }
       );
-
-      // ==================================================
-      // CHECK SHARING
-      // ==================================================
 
       const sharingAvailable =
         await Sharing.isAvailableAsync();
@@ -930,32 +668,21 @@ export default function ExportDataScreen() {
       if (!sharingAvailable) {
         Alert.alert(
           "สร้าง CSV สำเร็จ",
-          `สร้างไฟล์แล้ว:\n${fileName}\n\nแต่อุปกรณ์นี้ไม่รองรับ Share Sheet`
+          `สร้างไฟล์แล้ว:\n${fileName}`
         );
-
         return;
       }
 
-      // ==================================================
-      // SHARE
-      // ==================================================
-
       await Sharing.shareAsync(fileUri, {
         mimeType: "text/csv",
-
         dialogTitle:
-          "ส่งออกฐานข้อมูล BananaVision",
+          "ส่งออกฐานข้อมูลและคอมเมนต์ BananaVision",
       });
     } catch (error) {
-      console.error(
-        "[CSV EXPORT ERROR]",
-        error
-      );
-
+      console.error("[CSV EXPORT ERROR]", error);
       Alert.alert(
         "ส่งออก CSV ไม่สำเร็จ",
-        error?.message ||
-          "เกิดข้อผิดพลาด กรุณาลองใหม่"
+        error?.message || "เกิดข้อผิดพลาด กรุณาลองใหม่"
       );
     } finally {
       setLoadingType(null);
@@ -968,13 +695,13 @@ export default function ExportDataScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header Icon */}
+      {/* Header Section */}
       <View style={styles.centerIcon}>
         <View style={styles.iconCircle}>
           <Ionicons
-            name="cloud-download"
-            size={26}
-            color="#ca8a04"
+            name="cloud-download-outline"
+            size={28}
+            color="#16a34a"
           />
         </View>
 
@@ -983,38 +710,42 @@ export default function ExportDataScreen() {
         </Text>
 
         <Text style={styles.subtitle}>
-          ส่งออกรายงานจาก profiles,
-          scan_history และ scan_details
+          ระบบสำรองและส่งออกรายงานข้อมูลจากตาราง profiles, scan_history, scan_details และ feedback
         </Text>
       </View>
 
-      {/* Preview */}
+      {/* Preview Card */}
       <View style={styles.previewCard}>
-        <Text style={styles.previewTitle}>
-          📋 ข้อมูลที่จะส่งออก
-        </Text>
+        <View style={styles.previewHeaderRow}>
+          <Ionicons name="document-text-outline" size={16} color="#475569" />
+          <Text style={styles.previewTitle}>
+            ข้อมูลที่จะถูกรวมในไฟล์ส่งออก
+          </Text>
+        </View>
 
-        <Text style={styles.previewItem}>
-          • ผู้ใช้งานและอีเมลจาก profiles
-        </Text>
-
-        <Text style={styles.previewItem}>
-          • ประวัติการตรวจจาก scan_history
-        </Text>
-
-        <Text style={styles.previewItem}>
-          • ผลรายลูกและ Label Correction
-          จาก scan_details
-        </Text>
-
-        <Text style={styles.previewItem}>
-          • URL รูปต้นฉบับและรูปผลลัพธ์
-        </Text>
+        <View style={styles.previewList}>
+          <View style={styles.previewItemRow}>
+            <View style={styles.bulletDot} />
+            <Text style={styles.previewItemText}>ข้อมูลสมาชิกและสิทธิ์ (Profiles)</Text>
+          </View>
+          <View style={styles.previewItemRow}>
+            <View style={styles.bulletDot} />
+            <Text style={styles.previewItemText}>ประวัติการตรวจสอบภาพ (Scan History)</Text>
+          </View>
+          <View style={styles.previewItemRow}>
+            <View style={styles.bulletDot} />
+            <Text style={styles.previewItemText}>ผลวิเคราะห์รายลูกและการแก้ไข (Scan Details)</Text>
+          </View>
+          <View style={styles.previewItemRow}>
+            <View style={styles.bulletDot} />
+            <Text style={styles.previewItemText}>ข้อเสนอแนะและความคิดเห็น (Feedback)</Text>
+          </View>
+        </View>
       </View>
 
-      {/* Buttons */}
+      {/* Buttons Layout */}
       <View style={styles.btnLayout}>
-        {/* PDF */}
+        {/* PDF Export Button */}
         <TouchableOpacity
           style={[
             styles.actionBtn,
@@ -1022,36 +753,23 @@ export default function ExportDataScreen() {
             isLoading && styles.disabledButton,
           ]}
           onPress={handleExportPDF}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
           disabled={isLoading}
         >
           {loadingType === "pdf" ? (
-            <>
-              <ActivityIndicator
-                size="small"
-                color="#ffffff"
-              />
-
-              <Text style={styles.btnText}>
-                กำลังสร้าง PDF...
-              </Text>
-            </>
+            <View style={styles.btnInnerLoading}>
+              <ActivityIndicator size="small" color="#ffffff" />
+              <Text style={styles.btnText}>กำลังสร้างเอกสาร PDF...</Text>
+            </View>
           ) : (
-            <>
-              <Ionicons
-                name="document-text-outline"
-                size={18}
-                color="#ffffff"
-              />
-
-              <Text style={styles.btnText}>
-                ส่งออกเอกสาร PDF
-              </Text>
-            </>
+            <View style={styles.btnInnerContent}>
+              <Ionicons name="document-outline" size={18} color="#ffffff" />
+              <Text style={styles.btnText}>ส่งออกรายงานรูปแบบ PDF</Text>
+            </View>
           )}
         </TouchableOpacity>
 
-        {/* CSV */}
+        {/* CSV Export Button */}
         <TouchableOpacity
           style={[
             styles.actionBtn,
@@ -1059,32 +777,19 @@ export default function ExportDataScreen() {
             isLoading && styles.disabledButton,
           ]}
           onPress={handleExportCSV}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
           disabled={isLoading}
         >
           {loadingType === "csv" ? (
-            <>
-              <ActivityIndicator
-                size="small"
-                color="#ffffff"
-              />
-
-              <Text style={styles.btnText}>
-                กำลังสร้าง CSV...
-              </Text>
-            </>
+            <View style={styles.btnInnerLoading}>
+              <ActivityIndicator size="small" color="#ffffff" />
+              <Text style={styles.btnText}>กำลังประมวลผลไฟล์ CSV...</Text>
+            </View>
           ) : (
-            <>
-              <Ionicons
-                name="grid-outline"
-                size={18}
-                color="#ffffff"
-              />
-
-              <Text style={styles.btnText}>
-                ส่งออกฐานข้อมูล CSV
-              </Text>
-            </>
+            <View style={styles.btnInnerContent}>
+              <Ionicons name="grid-outline" size={18} color="#ffffff" />
+              <Text style={styles.btnText}>ส่งออกฐานข้อมูล CSV (รวมคอมเมนต์)</Text>
+            </View>
           )}
         </TouchableOpacity>
       </View>
@@ -1106,25 +811,30 @@ const styles = StyleSheet.create({
 
   centerIcon: {
     alignItems: "center",
-    marginBottom: 30,
+    marginBottom: 24,
   },
 
   iconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
+    width: 64,
+    height: 64,
+    borderRadius: 20,
     backgroundColor: "#ffffff",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
 
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "900",
-    color: "#1e293b",
-    marginTop: 16,
+    color: "#0f172a",
+    marginTop: 14,
   },
 
   subtitle: {
@@ -1133,33 +843,59 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 6,
     lineHeight: 20,
-    paddingHorizontal: 15,
-    fontWeight: "700",
+    paddingHorizontal: 10,
+    fontWeight: "600",
   },
 
   previewCard: {
     backgroundColor: "#ffffff",
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 30,
+    padding: 18,
+    borderRadius: 20,
+    marginBottom: 28,
     borderWidth: 1,
     borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+
+  previewHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
   },
 
   previewTitle: {
     fontSize: 14,
     fontWeight: "900",
-    color: "#475569",
-    marginBottom: 8,
+    color: "#1e293b",
   },
 
-  previewItem: {
-    fontSize: 13,
-    color: "#64748b",
-    marginBottom: 4,
+  previewList: {
+    gap: 8,
     paddingLeft: 4,
-    fontWeight: "700",
-    lineHeight: 20,
+  },
+
+  previewItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  bulletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#16a34a",
+  },
+
+  previewItemText: {
+    fontSize: 13,
+    color: "#475569",
+    fontWeight: "600",
   },
 
   btnLayout: {
@@ -1167,25 +903,41 @@ const styles = StyleSheet.create({
   },
 
   actionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
+    borderRadius: 16,
+    minHeight: 52,
     justifyContent: "center",
-    gap: 8,
-    padding: 14,
-    borderRadius: 12,
-    minHeight: 50,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
   },
 
   pdfButton: {
-    backgroundColor: "#ef4444",
+    backgroundColor: "#dc2626",
+    shadowColor: "#dc2626",
   },
 
   csvButton: {
     backgroundColor: "#16a34a",
+    shadowColor: "#16a34a",
   },
 
   disabledButton: {
     opacity: 0.6,
+  },
+
+  btnInnerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  btnInnerLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
 
   btnText: {

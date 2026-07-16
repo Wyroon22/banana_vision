@@ -8,6 +8,7 @@ import { supabase } from "../../lib/supabase";
 
 import HomeScreen from "./HomeScreen";
 import ManageUsersScreen from "./manage-users";
+import ManageCommentsScreen from "./manage-comments";
 import ExportDataScreen from "./export-data";
 
 const Tab = createBottomTabNavigator();
@@ -82,6 +83,21 @@ export default function DashboardTabs() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? "people" : "people-outline"}
+              size={20}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="ManageComments"
+        component={ManageCommentsScreen}
+        options={{
+          title: "ความคิดเห็น",
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "chatbubbles" : "chatbubbles-outline"}
               size={20}
               color={color}
             />

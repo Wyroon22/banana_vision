@@ -29,17 +29,13 @@ function toThaiRipeness(value) {
 
 function formatConfidence(value) {
   if (value === null || value === undefined) return "-";
-
   const num = Number(value);
-
   if (Number.isNaN(num)) return "-";
-
   return `${Math.round(num * 100)}%`;
 }
 
 function formatDate(value) {
   if (!value) return "-";
-
   try {
     return new Date(value).toLocaleString("th-TH", {
       dateStyle: "medium",
@@ -70,7 +66,6 @@ export default function AdminBananasScreen() {
       Alert.alert("เปิดรูปไม่ได้", "ไม่พบ URL ของรูปภาพนี้");
       return;
     }
-
     setZoomImageUri(uri);
   };
 
@@ -82,8 +77,6 @@ export default function AdminBananasScreen() {
     try {
       setLoading(true);
 
-      // STEP 1:
-      // ดึงรายละเอียดกล้วยรายลูก
       const {
         data: detailData,
         error: detailError,
@@ -93,21 +86,14 @@ export default function AdminBananasScreen() {
           "id, scan_id, banana_index, ripeness_label, ripeness_th, confidence, user_selected_ripeness, user_selected_color_level, feedback_updated_at, created_at"
         )
         .order("created_at", { ascending: false })
-
-        // [OPTIMIZE]
-        // เดิม 200 ทำให้มีรูปซ้ำจำนวนมากและโหลดหนัก
         .limit(50);
 
       if (detailError) {
         throw detailError;
       }
 
-      const details = Array.isArray(detailData)
-        ? detailData
-        : [];
+      const details = Array.isArray(detailData) ? detailData : [];
 
-      // STEP 2:
-      // เอา scan_id ที่ไม่ซ้ำกัน
       const scanIds = [
         ...new Set(
           details
@@ -118,44 +104,34 @@ export default function AdminBananasScreen() {
 
       let scanImageMap = {};
 
-      // STEP 3:
-      // ดึงรูปจาก scan_history
       if (scanIds.length > 0) {
         const {
           data: scanData,
           error: scanError,
         } = await supabase
           .from("scan_history")
-          .select(
-            "id, original_image_url, result_image_url"
-          )
+          .select("id, original_image_url, result_image_url")
           .in("id", scanIds);
 
         if (scanError) {
           throw scanError;
         }
 
-        // STEP 4:
-        // map scan_id -> image URL
         scanImageMap = (scanData || []).reduce(
           (acc, scan) => {
             acc[scan.id] =
               scan.result_image_url ||
               scan.original_image_url ||
               null;
-
             return acc;
           },
           {}
         );
       }
 
-      // STEP 5:
-      // รวม scan_details + URL รูป
       const mergedDetails = details.map((item) => ({
         ...item,
-        scan_image_url:
-          scanImageMap[item.scan_id] || null,
+        scan_image_url: scanImageMap[item.scan_id] || null,
       }));
 
       setBananas(mergedDetails);
@@ -176,228 +152,163 @@ export default function AdminBananasScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Back */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBack}
-          activeOpacity={0.75}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={22}
-            color="#0f172a"
-          />
+        {/* Header Bar */}
+        <View style={styles.headerBar}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBack}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="arrow-back" size={20} color="#0f172a" />
+            <Text style={styles.backText}>ย้อนกลับ</Text>
+          </TouchableOpacity>
 
-          <Text style={styles.backText}>
-            กลับ
-          </Text>
-        </TouchableOpacity>
-
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>
-            รายละเอียดกล้วยรายลูกทั้งหมด
-          </Text>
-
-          <Text style={styles.subtitle}>
-            ดึงข้อมูลจากตาราง scan_details ของ Supabase
-          </Text>
+          <View style={styles.summaryBadgeHeader}>
+            <Ionicons name="grid-outline" size={14} color="#16a34a" />
+            <Text style={styles.summaryBadgeText}>{bananas.length} รายการ</Text>
+          </View>
         </View>
 
-        {/* Summary */}
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>
-            จำนวนที่แสดง
-          </Text>
-
-          <Text style={styles.summaryValue}>
-            {bananas.length} รายการล่าสุด
+        {/* Title Section */}
+        <View style={styles.header}>
+          <Text style={styles.title}>รายละเอียดกล้วยรายลูก</Text>
+          <Text style={styles.subtitle}>
+            ข้อมูลการวิเคราะห์ผลผลิตกล้วยแต่ละลูกจากตาราง scan_details
           </Text>
         </View>
 
         {/* Loading */}
         {loading && bananas.length === 0 ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color="#ca8a04" />
-
-            <Text style={styles.loadingText}>
-              กำลังโหลดข้อมูล...
-            </Text>
+            <ActivityIndicator size="small" color="#16a34a" />
+            <Text style={styles.loadingText}>กำลังโหลดข้อมูล...</Text>
           </View>
         ) : (
           <FlatList
             data={bananas}
             keyExtractor={(item) => String(item.id)}
-
             refreshControl={
               <RefreshControl
                 refreshing={loading}
                 onRefresh={loadBananas}
+                tintColor="#16a34a"
               />
             }
-
             showsVerticalScrollIndicator={false}
-
             contentContainerStyle={styles.listContent}
-
-            // [OPTIMIZE]
             initialNumToRender={5}
             maxToRenderPerBatch={5}
             windowSize={5}
             updateCellsBatchingPeriod={50}
             removeClippedSubviews={Platform.OS === "android"}
-
             ListEmptyComponent={
               <View style={styles.emptyCard}>
+                <Ionicons name="basket-outline" size={48} color="#cbd5e1" />
                 <Text style={styles.emptyTitle}>
                   ยังไม่มีข้อมูลกล้วยรายลูก
                 </Text>
-
                 <Text style={styles.emptyText}>
-                  เมื่อมีการ Detect และบันทึก scan_details
-                  ข้อมูลจะมาแสดงที่นี่
+                  เมื่อมีการตรวจวิเคราะห์และบันทึกข้อมูล ข้อมูลจะมาแสดงที่นี่โดยอัตโนมัติ
                 </Text>
               </View>
             }
-
             renderItem={({ item }) => {
               const aiLabel = toThaiRipeness(
-                item.ripeness_th ||
-                item.ripeness_label
+                item.ripeness_th || item.ripeness_label
               );
-
               const userLabel = toThaiRipeness(
                 item.user_selected_ripeness
               );
-
-              const hasCorrection =
-                !!item.user_selected_ripeness;
+              const hasCorrection = !!item.user_selected_ripeness;
 
               return (
                 <View style={styles.card}>
                   {/* Scan Image */}
                   {item.scan_image_url ? (
                     <TouchableOpacity
-                      activeOpacity={0.9}
-                      onPress={() =>
-                        openZoomImage(item.scan_image_url)
-                      }
+                      activeOpacity={0.92}
+                      onPress={() => openZoomImage(item.scan_image_url)}
+                      style={styles.imageContainer}
                     >
                       <Image
-                        source={{
-                          uri: item.scan_image_url,
-                        }}
+                        source={{ uri: item.scan_image_url }}
                         style={styles.scanImage}
                         resizeMode="cover"
                         progressiveRenderingEnabled
                         fadeDuration={150}
                       />
-
-                      {/* Hint */}
                       <View style={styles.zoomHint}>
-                        <Ionicons
-                          name="search"
-                          size={14}
-                          color="#ffffff"
-                        />
-
-                        <Text style={styles.zoomHintText}>
-                          แตะเพื่อดูเต็มรูป
-                        </Text>
+                        <Ionicons name="scan-outline" size={13} color="#ffffff" />
+                        <Text style={styles.zoomHintText}>แตะเพื่อขยายรูป</Text>
                       </View>
                     </TouchableOpacity>
                   ) : (
                     <View style={styles.noImageBox}>
-                      <Ionicons
-                        name="image-outline"
-                        size={28}
-                        color="#94a3b8"
-                      />
-
-                      <Text style={styles.noImageText}>
-                        ไม่มีรูปภาพ
-                      </Text>
+                      <Ionicons name="image-outline" size={28} color="#94a3b8" />
+                      <Text style={styles.noImageText}>ไม่มีรูปภาพ</Text>
                     </View>
                   )}
 
                   {/* Card Header */}
                   <View style={styles.cardTop}>
-                    <Text style={styles.cardTitle}>
-                      Scan{" "}
-                      {String(item.scan_id || "").slice(
-                        0,
-                        8
-                      )}{" "}
-                      • ลูกที่{" "}
-                      {item.banana_index ?? "-"}
-                    </Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cardTitle}>
+                        Scan: {String(item.scan_id || "").slice(0, 8)}...
+                      </Text>
+                      <Text style={styles.bananaIndexBadgeText}>
+                        กล้วยลูกที่ #{item.banana_index ?? "-"}
+                      </Text>
+                    </View>
 
                     <View
                       style={[
                         styles.badge,
-                        hasCorrection
-                          ? styles.badgeRed
-                          : styles.badgeGreen,
+                        hasCorrection ? styles.badgeRed : styles.badgeGreen,
                       ]}
                     >
                       <Text
                         style={[
                           styles.badgeText,
-                          hasCorrection
-                            ? styles.badgeTextRed
-                            : styles.badgeTextGreen,
+                          hasCorrection ? styles.badgeTextRed : styles.badgeTextGreen,
                         ]}
                       >
-                        {hasCorrection
-                          ? "มีการแก้ไข"
-                          : aiLabel}
+                        {hasCorrection ? "มีการแก้ไข" : aiLabel}
                       </Text>
                     </View>
                   </View>
 
-                  {/* AI Prediction */}
-                  <Text style={styles.infoText}>
-                    AI ทำนาย:{" "}
-                    <Text style={styles.bold}>
-                      {aiLabel}
+                  {/* Details Grid */}
+                  <View style={styles.detailsBox}>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.infoLabel}>AI ทำนายผล:</Text>
+                      <Text style={styles.bold}>{aiLabel}</Text>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                      <Text style={styles.infoLabel}>ความแม่นยำ:</Text>
+                      <Text style={styles.bold}>{formatConfidence(item.confidence)}</Text>
+                    </View>
+
+                    {hasCorrection && (
+                      <>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.infoLabel}>ผู้ใช้แก้เป็น:</Text>
+                          <Text style={[styles.bold, { color: "#dc2626" }]}>{userLabel}</Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.infoLabel}>ระดับสี:</Text>
+                          <Text style={styles.bold}>{item.user_selected_color_level || "-"}</Text>
+                        </View>
+                      </>
+                    )}
+                  </View>
+
+                  {/* Footer Date */}
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.dateText}>
+                      <Ionicons name="time-outline" size={12} color="#94a3b8" /> บันทึกเมื่อ: {formatDate(item.created_at)}
                     </Text>
-                  </Text>
-
-                  {/* Confidence */}
-                  <Text style={styles.infoText}>
-                    Confidence:{" "}
-                    <Text style={styles.bold}>
-                      {formatConfidence(
-                        item.confidence
-                      )}
-                    </Text>
-                  </Text>
-
-                  {/* Correction */}
-                  {hasCorrection && (
-                    <>
-                      <Text style={styles.infoText}>
-                        ผู้ใช้แก้เป็น:{" "}
-                        <Text style={styles.bold}>
-                          {userLabel}
-                        </Text>
-                      </Text>
-
-                      <Text style={styles.infoText}>
-                        ระดับสี:{" "}
-                        <Text style={styles.bold}>
-                          {item.user_selected_color_level ||
-                            "-"}
-                        </Text>
-                      </Text>
-                    </>
-                  )}
-
-                  {/* Date */}
-                  <Text style={styles.dateText}>
-                    วันที่บันทึก:{" "}
-                    {formatDate(item.created_at)}
-                  </Text>
+                  </View>
                 </View>
               );
             }}
@@ -414,24 +325,15 @@ export default function AdminBananasScreen() {
         onRequestClose={closeZoomImage}
       >
         <View style={styles.imageModalOverlay}>
-          {/* Close */}
           <TouchableOpacity
             style={styles.imageModalCloseButton}
             onPress={closeZoomImage}
             activeOpacity={0.8}
           >
-            <Ionicons
-              name="close"
-              size={24}
-              color="#0f172a"
-            />
-
-            <Text style={styles.imageModalCloseText}>
-              ปิด
-            </Text>
+            <Ionicons name="close" size={20} color="#0f172a" />
+            <Text style={styles.imageModalCloseText}>ปิด</Text>
           </TouchableOpacity>
 
-          {/* Full Image */}
           <View style={styles.imageModalBody}>
             {zoomImageUri && (
               <Image
@@ -459,27 +361,50 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8fafc",
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === "android" ? 24 : 8,
+    paddingTop: Platform.OS === "android" ? 16 : 8,
+  },
+
+  headerBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
   },
 
   backButton: {
-    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     backgroundColor: "#ffffff",
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    marginBottom: 22,
   },
 
   backText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: "#0f172a",
+  },
+
+  summaryBadgeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#dcfce7",
+  },
+
+  summaryBadgeText: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#16a34a",
   },
 
   header: {
@@ -487,39 +412,16 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: "900",
     color: "#0f172a",
-    marginBottom: 8,
+    marginBottom: 4,
   },
 
   subtitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#64748b",
-    lineHeight: 24,
-  },
-
-  summaryCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 16,
-    marginBottom: 14,
-  },
-
-  summaryLabel: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     color: "#64748b",
-  },
-
-  summaryValue: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#0f172a",
-    marginTop: 4,
   },
 
   loadingBox: {
@@ -527,10 +429,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    padding: 18,
+    padding: 24,
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
     alignItems: "center",
+    justifyContent: "center",
+    marginTop: 20,
   },
 
   loadingText: {
@@ -541,33 +445,42 @@ const styles = StyleSheet.create({
 
   listContent: {
     paddingBottom: 36,
+    gap: 14,
   },
 
   card: {
     backgroundColor: "#ffffff",
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "#e2e8f0",
     padding: 16,
-    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+
+  imageContainer: {
+    position: "relative",
+    marginBottom: 14,
   },
 
   scanImage: {
     width: "100%",
-    height: 180,
+    height: 190,
     borderRadius: 14,
-    backgroundColor: "#e2e8f0",
-    marginBottom: 12,
+    backgroundColor: "#f1f5f9",
   },
 
   zoomHint: {
     position: "absolute",
     right: 10,
-    bottom: 22,
+    bottom: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "rgba(15, 23, 42, 0.72)",
+    backgroundColor: "rgba(15, 23, 42, 0.75)",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
@@ -583,10 +496,13 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 140,
     borderRadius: 14,
-    backgroundColor: "#f1f5f9",
-    marginBottom: 12,
+    backgroundColor: "#f8fafc",
+    marginBottom: 14,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderStyle: "dashed",
     gap: 6,
   },
 
@@ -600,29 +516,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 10,
     marginBottom: 10,
   },
 
   cardTitle: {
-    flex: 1,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "900",
     color: "#0f172a",
   },
 
+  bananaIndexBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748b",
+    marginTop: 2,
+  },
+
   badge: {
-    borderRadius: 999,
+    borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 5,
+    borderWidth: 1,
   },
 
   badgeGreen: {
-    backgroundColor: "#e6f4ea",
+    backgroundColor: "#f0fdf4",
+    borderColor: "#dcfce7",
   },
 
   badgeRed: {
     backgroundColor: "#fef2f2",
+    borderColor: "#fee2e2",
   },
 
   badgeText: {
@@ -631,52 +555,77 @@ const styles = StyleSheet.create({
   },
 
   badgeTextGreen: {
-    color: "#137333",
+    color: "#16a34a",
   },
 
   badgeTextRed: {
-    color: "#991b1b",
+    color: "#dc2626",
   },
 
-  infoText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#475569",
-    marginBottom: 5,
+  detailsBox: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  infoLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748b",
   },
 
   bold: {
+    fontSize: 13,
     fontWeight: "900",
     color: "#0f172a",
   },
 
+  cardFooter: {
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    paddingTop: 10,
+  },
+
   dateText: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "600",
     color: "#94a3b8",
-    marginTop: 8,
   },
 
   emptyCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    padding: 18,
+    padding: 32,
+    alignItems: "center",
+    marginTop: 20,
   },
 
   emptyTitle: {
     fontSize: 16,
     fontWeight: "900",
     color: "#0f172a",
+    marginTop: 12,
   },
 
   emptyText: {
-    fontSize: 14,
-    fontWeight: "700",
+    fontSize: 13,
+    fontWeight: "600",
     color: "#64748b",
+    textAlign: "center",
     marginTop: 6,
-    lineHeight: 22,
+    lineHeight: 20,
   },
 
   // ===== FULL IMAGE MODAL =====
@@ -688,7 +637,7 @@ const styles = StyleSheet.create({
 
   imageModalCloseButton: {
     position: "absolute",
-    top: Platform.OS === "ios" ? 58 : 34,
+    top: Platform.OS === "ios" ? 54 : 32,
     right: 20,
     zIndex: 20,
     flexDirection: "row",
@@ -697,11 +646,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 999,
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingVertical: 8,
   },
 
   imageModalCloseText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: "#0f172a",
   },

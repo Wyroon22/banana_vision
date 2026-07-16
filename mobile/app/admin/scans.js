@@ -74,9 +74,6 @@ export default function AdminScansScreen() {
           "id, user_id, guest_id, total_bananas, green_count, breaker_count, ripe_count, overripe_count, inference_ms, original_image_url, result_image_url, created_at"
         )
         .order("created_at", { ascending: false })
-
-        // [OPTIMIZE]
-        // เดิม 200 รายการ ทำให้โหลดรูปใหญ่พร้อมกันหนักเกินไป
         .limit(50);
 
       if (error) {
@@ -101,38 +98,35 @@ export default function AdminScansScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* ปุ่มย้อนกลับ */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBack}
-          activeOpacity={0.75}
-        >
-          <Ionicons name="arrow-back" size={22} color="#0f172a" />
-          <Text style={styles.backText}>กลับ</Text>
-        </TouchableOpacity>
+        {/* Header Bar */}
+        <View style={styles.headerBar}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBack}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="arrow-back" size={20} color="#0f172a" />
+            <Text style={styles.backText}>ย้อนกลับ</Text>
+          </TouchableOpacity>
 
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>ประวัติการตรวจทั้งหมด</Text>
-
-          <Text style={styles.subtitle}>
-            ดึงข้อมูลจากตาราง scan_history ของ Supabase
-          </Text>
+          <View style={styles.summaryBadgeHeader}>
+            <Ionicons name="document-text-outline" size={14} color="#16a34a" />
+            <Text style={styles.summaryBadgeText}>{scans.length} รายการ</Text>
+          </View>
         </View>
 
-        {/* Summary */}
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>จำนวนที่แสดง</Text>
-
-          <Text style={styles.summaryValue}>
-            {scans.length} รายการล่าสุด
+        {/* Title Section */}
+        <View style={styles.header}>
+          <Text style={styles.title}>ประวัติการตรวจทั้งหมด</Text>
+          <Text style={styles.subtitle}>
+            บันทึกประวัติการวิเคราะห์ผลกล้วยจากตาราง scan_history
           </Text>
         </View>
 
         {/* Loading */}
         {loading && scans.length === 0 ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color="#ca8a04" />
+            <ActivityIndicator size="small" color="#16a34a" />
             <Text style={styles.loadingText}>กำลังโหลดข้อมูล...</Text>
           </View>
         ) : (
@@ -143,34 +137,28 @@ export default function AdminScansScreen() {
               <RefreshControl
                 refreshing={loading}
                 onRefresh={loadScans}
+                tintColor="#16a34a"
               />
             }
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
-
-            // [OPTIMIZE]
-            // ไม่ render 50 card พร้อมกัน
             initialNumToRender={5}
             maxToRenderPerBatch={5}
             windowSize={5}
             updateCellsBatchingPeriod={50}
             removeClippedSubviews={Platform.OS === "android"}
-
             ListEmptyComponent={
               <View style={styles.emptyCard}>
+                <Ionicons name="folder-open-outline" size={48} color="#cbd5e1" />
                 <Text style={styles.emptyTitle}>
                   ยังไม่มีประวัติการตรวจ
                 </Text>
-
                 <Text style={styles.emptyText}>
-                  เมื่อมีการ Detect รูป ข้อมูล scan_history จะมาแสดงที่นี่
+                  เมื่อมีการสแกนรูปภาพ ข้อมูลจะมาแสดงที่นี่โดยอัตโนมัติ
                 </Text>
               </View>
             }
-
             renderItem={({ item }) => {
-              // ให้ใช้รูปผลลัพธ์ตีกรอบก่อน
-              // ถ้าไม่มีค่อย fallback ไปต้นฉบับ
               const imageUrl =
                 item.result_image_url ||
                 item.original_image_url ||
@@ -181,32 +169,24 @@ export default function AdminScansScreen() {
                   {/* รูป Scan */}
                   {imageUrl ? (
                     <TouchableOpacity
-                      activeOpacity={0.9}
+                      activeOpacity={0.92}
                       onPress={() => openZoomImage(imageUrl)}
+                      style={styles.imageContainer}
                     >
                       <Image
                         source={{ uri: imageUrl }}
                         style={styles.scanImage}
                         resizeMode="cover"
-
-                        // Android ช่วยแสดงภาพ progressive ได้ดีขึ้น
                         progressiveRenderingEnabled
-
-                        // ลดการกระพริบตอนรูปขึ้น
                         fadeDuration={150}
                       />
-
-                      {/* Hint */}
                       <View style={styles.zoomHint}>
                         <Ionicons
-                          name="search"
-                          size={14}
+                          name="scan-outline"
+                          size={13}
                           color="#ffffff"
                         />
-
-                        <Text style={styles.zoomHintText}>
-                          แตะเพื่อดูเต็มรูป
-                        </Text>
+                        <Text style={styles.zoomHintText}>แตะเพื่อขยายรูป</Text>
                       </View>
                     </TouchableOpacity>
                   ) : (
@@ -216,81 +196,75 @@ export default function AdminScansScreen() {
                         size={28}
                         color="#94a3b8"
                       />
-
-                      <Text style={styles.noImageText}>
-                        ไม่มีรูปภาพ
-                      </Text>
+                      <Text style={styles.noImageText}>ไม่มีรูปภาพ</Text>
                     </View>
                   )}
 
-                  {/* Scan ID + จำนวนกล้วย */}
+                  {/* Card Content Header */}
                   <View style={styles.cardTop}>
-                    <Text style={styles.cardTitle}>
-                      Scan {String(item.id || "").slice(0, 8)}
-                    </Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cardTitle}>
+                        ID: {String(item.id || "").slice(0, 8)}...
+                      </Text>
+                      <Text style={styles.dateText}>
+                        <Ionicons name="time-outline" size={12} color="#94a3b8" /> {formatDate(item.created_at)}
+                      </Text>
+                    </View>
 
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>
+                    <View style={styles.totalBadge}>
+                      <Text style={styles.totalBadgeText}>
                         {item.total_bananas ?? 0} ลูก
                       </Text>
                     </View>
                   </View>
 
                   {/* ผู้ใช้ */}
-                  <Text style={styles.infoText}>
-                    ผู้ใช้:{" "}
-                    <Text style={styles.bold}>
-                      {item.user_id
-                        ? String(item.user_id).slice(0, 8)
-                        : item.guest_id
-                        ? `Guest ${String(item.guest_id).slice(0, 8)}`
-                        : "-"}
-                    </Text>
-                  </Text>
-
-                  {/* Counts */}
-                  <View style={styles.countGrid}>
-                    <Text style={styles.countText}>
-                      ดิบ:{" "}
+                  <View style={styles.userRow}>
+                    <Ionicons name="person-circle-outline" size={16} color="#64748b" />
+                    <Text style={styles.infoText}>
+                      ผู้ใช้งาน:{" "}
                       <Text style={styles.bold}>
-                        {item.green_count ?? 0}
-                      </Text>
-                    </Text>
-
-                    <Text style={styles.countText}>
-                      ห่าม:{" "}
-                      <Text style={styles.bold}>
-                        {item.breaker_count ?? 0}
-                      </Text>
-                    </Text>
-
-                    <Text style={styles.countText}>
-                      สุก:{" "}
-                      <Text style={styles.bold}>
-                        {item.ripe_count ?? 0}
-                      </Text>
-                    </Text>
-
-                    <Text style={styles.countText}>
-                      งอม:{" "}
-                      <Text style={styles.bold}>
-                        {item.overripe_count ?? 0}
+                        {item.user_id
+                          ? `User (${String(item.user_id).slice(0, 8)}...)`
+                          : item.guest_id
+                          ? `Guest (${String(item.guest_id).slice(0, 8)}...)`
+                          : "ไม่ระบุตัวตน"}
                       </Text>
                     </Text>
                   </View>
 
-                  {/* Inference */}
-                  <Text style={styles.infoText}>
-                    เวลา AI ประมวลผล:{" "}
-                    <Text style={styles.bold}>
-                      {formatMs(item.inference_ms)}
-                    </Text>
-                  </Text>
+                  {/* Counts Grid (ดิบ, ห่าม, สุก, งอม) */}
+                  <View style={styles.countGrid}>
+                    <View style={[styles.countBadgeItem, { backgroundColor: "#f0fdf4", borderColor: "#dcfce7" }]}>
+                      <Text style={[styles.countLabel, { color: "#15803d" }]}>ดิบ</Text>
+                      <Text style={[styles.countVal, { color: "#15803d" }]}>{item.green_count ?? 0}</Text>
+                    </View>
 
-                  {/* Date */}
-                  <Text style={styles.dateText}>
-                    วันที่ตรวจ: {formatDate(item.created_at)}
-                  </Text>
+                    <View style={[styles.countBadgeItem, { backgroundColor: "#fefce8", borderColor: "#fef08a" }]}>
+                      <Text style={[styles.countLabel, { color: "#a16207" }]}>ห่าม</Text>
+                      <Text style={[styles.countVal, { color: "#a16207" }]}>{item.breaker_count ?? 0}</Text>
+                    </View>
+
+                    <View style={[styles.countBadgeItem, { backgroundColor: "#eff6ff", borderColor: "#bfdbfe" }]}>
+                      <Text style={[styles.countLabel, { color: "#1d4ed8" }]}>สุก</Text>
+                      <Text style={[styles.countVal, { color: "#1d4ed8" }]}>{item.ripe_count ?? 0}</Text>
+                    </View>
+
+                    <View style={[styles.countBadgeItem, { backgroundColor: "#fef2f2", borderColor: "#fecaca" }]}>
+                      <Text style={[styles.countLabel, { color: "#b91c1c" }]}>งอม</Text>
+                      <Text style={[styles.countVal, { color: "#b91c1c" }]}>{item.overripe_count ?? 0}</Text>
+                    </View>
+                  </View>
+
+                  {/* Footer Info: Inference Time */}
+                  <View style={styles.cardFooter}>
+                    <View style={styles.inferenceBox}>
+                      <Ionicons name="flash-outline" size={13} color="#ca8a04" />
+                      <Text style={styles.inferenceText}>
+                        ประมวลผล: <Text style={styles.bold}>{formatMs(item.inference_ms)}</Text>
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               );
             }}
@@ -307,24 +281,15 @@ export default function AdminScansScreen() {
         onRequestClose={closeZoomImage}
       >
         <View style={styles.imageModalOverlay}>
-          {/* ปุ่มปิด */}
           <TouchableOpacity
             style={styles.imageModalCloseButton}
             onPress={closeZoomImage}
             activeOpacity={0.8}
           >
-            <Ionicons
-              name="close"
-              size={24}
-              color="#0f172a"
-            />
-
-            <Text style={styles.imageModalCloseText}>
-              ปิด
-            </Text>
+            <Ionicons name="close" size={20} color="#0f172a" />
+            <Text style={styles.imageModalCloseText}>ปิด</Text>
           </TouchableOpacity>
 
-          {/* รูปเต็มจอ */}
           <View style={styles.imageModalBody}>
             {zoomImageUri && (
               <Image
@@ -352,27 +317,50 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8fafc",
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === "android" ? 24 : 8,
+    paddingTop: Platform.OS === "android" ? 16 : 8,
+  },
+
+  headerBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
   },
 
   backButton: {
-    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     backgroundColor: "#ffffff",
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    marginBottom: 22,
   },
 
   backText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: "#0f172a",
+  },
+
+  summaryBadgeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#dcfce7",
+  },
+
+  summaryBadgeText: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#16a34a",
   },
 
   header: {
@@ -380,39 +368,16 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: "900",
     color: "#0f172a",
-    marginBottom: 8,
+    marginBottom: 4,
   },
 
   subtitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#64748b",
-    lineHeight: 24,
-  },
-
-  summaryCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 16,
-    marginBottom: 14,
-  },
-
-  summaryLabel: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     color: "#64748b",
-  },
-
-  summaryValue: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#0f172a",
-    marginTop: 4,
   },
 
   loadingBox: {
@@ -420,10 +385,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    padding: 18,
+    padding: 24,
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
     alignItems: "center",
+    justifyContent: "center",
+    marginTop: 20,
   },
 
   loadingText: {
@@ -434,33 +401,42 @@ const styles = StyleSheet.create({
 
   listContent: {
     paddingBottom: 36,
+    gap: 14,
   },
 
   card: {
     backgroundColor: "#ffffff",
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "#e2e8f0",
     padding: 16,
-    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+
+  imageContainer: {
+    position: "relative",
+    marginBottom: 14,
   },
 
   scanImage: {
     width: "100%",
-    height: 180,
+    height: 190,
     borderRadius: 14,
-    backgroundColor: "#e2e8f0",
-    marginBottom: 12,
+    backgroundColor: "#f1f5f9",
   },
 
   zoomHint: {
     position: "absolute",
     right: 10,
-    bottom: 22,
+    bottom: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "rgba(15, 23, 42, 0.72)",
+    backgroundColor: "rgba(15, 23, 42, 0.75)",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
@@ -476,10 +452,13 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 140,
     borderRadius: 14,
-    backgroundColor: "#f1f5f9",
-    marginBottom: 12,
+    backgroundColor: "#f8fafc",
+    marginBottom: 14,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderStyle: "dashed",
     gap: 6,
   },
 
@@ -493,49 +472,66 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 10,
     marginBottom: 10,
   },
 
   cardTitle: {
-    flex: 1,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "900",
     color: "#0f172a",
   },
 
-  badge: {
-    borderRadius: 999,
+  totalBadge: {
+    borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    backgroundColor: "#e6f4ea",
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#dcfce7",
   },
 
-  badgeText: {
-    fontSize: 11,
+  totalBadgeText: {
+    fontSize: 12,
     fontWeight: "900",
-    color: "#137333",
+    color: "#16a34a",
+  },
+
+  userRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
   },
 
   infoText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#475569",
-    marginBottom: 5,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748b",
   },
 
   countGrid: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    padding: 10,
-    marginVertical: 8,
-    gap: 4,
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
   },
 
-  countText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#475569",
+  countBadgeItem: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 8,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+
+  countLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    marginBottom: 2,
+  },
+
+  countVal: {
+    fontSize: 14,
+    fontWeight: "900",
   },
 
   bold: {
@@ -544,32 +540,57 @@ const styles = StyleSheet.create({
   },
 
   dateText: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "600",
     color: "#94a3b8",
-    marginTop: 8,
+    marginTop: 2,
+  },
+
+  cardFooter: {
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    paddingTop: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  inferenceBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
+  inferenceText: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: "600",
   },
 
   emptyCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    padding: 18,
+    padding: 32,
+    alignItems: "center",
+    marginTop: 20,
   },
 
   emptyTitle: {
     fontSize: 16,
     fontWeight: "900",
     color: "#0f172a",
+    marginTop: 12,
   },
 
   emptyText: {
-    fontSize: 14,
-    fontWeight: "700",
+    fontSize: 13,
+    fontWeight: "600",
     color: "#64748b",
+    textAlign: "center",
     marginTop: 6,
-    lineHeight: 22,
+    lineHeight: 20,
   },
 
   // ===== FULL IMAGE MODAL =====
@@ -581,7 +602,7 @@ const styles = StyleSheet.create({
 
   imageModalCloseButton: {
     position: "absolute",
-    top: Platform.OS === "ios" ? 58 : 34,
+    top: Platform.OS === "ios" ? 54 : 32,
     right: 20,
     zIndex: 20,
     flexDirection: "row",
@@ -590,11 +611,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 999,
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingVertical: 8,
   },
 
   imageModalCloseText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: "#0f172a",
   },
