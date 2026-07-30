@@ -70,3 +70,7 @@ yarn-error.*
 *.png
 *.jpg
 *.webp
+
+# Local backup files
+backup_v1_before_v2/
+mobile/app/(tabs)/index.backup.tsx
