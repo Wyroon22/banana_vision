@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 
 import { supabase } from "../../lib/supabase";
 
@@ -259,26 +260,58 @@ export default function ManageUsersScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header Section */}
-      <View style={styles.sectionHeader}>
-        <View style={styles.headerIconBox}>
-          <Ionicons name="people" size={22} color={THEME.accent} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.sectionTitle}>จัดการสมาชิก ({users.length})</Text>
-          <Text style={styles.sectionSubtitle}>
-            ระบบบริหารจัดการบัญชีผู้ใช้และสิทธิ์การเข้าถึง
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={openAddModal}
-          style={styles.addHeaderBtn}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="person-add" size={15} color="#FFFFFF" />
-          <Text style={styles.addHeaderBtnText}>เพิ่มผู้ใช้</Text>
-        </TouchableOpacity>
+    {/* Back Button */}
+    <TouchableOpacity
+      style={styles.backButton}
+      activeOpacity={0.8}
+      onPress={() => router.replace("/admin")}
+    >
+      <Ionicons
+        name="arrow-back"
+        size={20}
+        color={THEME.textMain}
+      />
+      <Text style={styles.backButtonText}>
+        กลับหน้า Dashboard
+      </Text>
+    </TouchableOpacity>
+
+    {/* Header Section */}
+    <View style={styles.sectionHeader}>
+      <View style={styles.headerIconBox}>
+        <Ionicons
+          name="people"
+          size={22}
+          color={THEME.accent}
+        />
       </View>
+
+      <View style={{ flex: 1 }}>
+        <Text style={styles.sectionTitle}>
+          จัดการสมาชิก ({users.length})
+        </Text>
+
+        <Text style={styles.sectionSubtitle}>
+          ระบบบริหารจัดการบัญชีผู้ใช้และสิทธิ์การเข้าถึง
+        </Text>
+      </View>
+
+      <TouchableOpacity
+        onPress={openAddModal}
+        style={styles.addHeaderBtn}
+        activeOpacity={0.8}
+      >
+        <Ionicons
+          name="person-add"
+          size={15}
+          color="#FFFFFF"
+        />
+
+        <Text style={styles.addHeaderBtnText}>
+          เพิ่มผู้ใช้
+        </Text>
+      </TouchableOpacity>
+    </View>
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -525,7 +558,13 @@ export default function ManageUsersScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: THEME.bg },
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 52,
+    backgroundColor: THEME.bg,
+},
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -715,4 +754,25 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   submitBtnText: { color: "#FFFFFF", fontWeight: "900", fontSize: 15 },
+
+  backButton: {
+  flexDirection: "row",
+  alignItems: "center",
+  alignSelf: "flex-start",
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  borderRadius: 12,
+  backgroundColor: "#FFFFFF",
+  borderWidth: 1,
+  borderColor: THEME.border,
+  marginTop: 4,
+  marginBottom: 14,
+},
+
+backButtonText: {
+  marginLeft: 6,
+  fontSize: 14,
+  fontWeight: "700",
+  color: THEME.textMain,
+},
 });

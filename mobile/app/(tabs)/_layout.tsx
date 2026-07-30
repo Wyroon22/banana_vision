@@ -8,7 +8,7 @@ export default function TabLayout() {
         headerShown: false,
 
         // ซ่อน Tab Bar เดิมของ Expo Router
-        // เพราะเราจะสร้าง Dock ใหม่เองในหน้า Home
+        // เพราะใช้ HomeDock ที่สร้างเองในหน้า Home
         tabBarStyle: {
           display: "none",
         },

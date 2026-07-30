@@ -6,7 +6,7 @@ import "react-native-reanimated";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export const unstable_settings = {
-  anchor: "(tabs)",
+  anchor: "index",
 };
 
 export default function RootLayout() {
@@ -14,117 +14,24 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <Stack>
-        {/* หน้า Tabs หลัก */}
-        <Stack.Screen
-          name="(tabs)"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        {/* [AUTH] ปิด header ดำของหน้า Login */}
-        <Stack.Screen
-          name="login"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        {/* [AUTH] ปิด header ดำของหน้า Register */}
-        <Stack.Screen
-          name="register"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        {/* [AUTH] ปิด header ดำของหน้า Forgot Password */}
-        <Stack.Screen
-          name="forgot-password"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        {/* หน้า Video Detect */}
-        <Stack.Screen
-          name="video-detect"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        <Stack.Screen
-          name="modal"
-          options={{
-            presentation: "modal",
-            title: "Modal",
-          }}
-        />
-
-        <Stack.Screen
-          name="reset-password"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        <Stack.Screen
-          name="history"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        <Stack.Screen
-          name="scan-detail"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        <Stack.Screen
-          name="profile"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        <Stack.Screen
-          name="admin/index"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        <Stack.Screen
-          name="admin/users"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        <Stack.Screen
-          name="admin/scans"
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        <Stack.Screen
-          name="admin/bananas"
-          options={{
-            headerShown: false,
-        }}
-        />
-
-        <Stack.Screen
-          name="admin/corrections"
-          options={{
-            headerShown: false,
-          }}
-        />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="register" />
+        <Stack.Screen name="forgot-password" />
+        <Stack.Screen name="reset-password" />
+        <Stack.Screen name="history" />
+        <Stack.Screen name="scan-detail" />
+        <Stack.Screen name="profile" />
+        <Stack.Screen name="video-detect" />
+        <Stack.Screen name="CommentScreen" />
+        <Stack.Screen name="modal" options={{ presentation: "modal", title: "Modal" }} />
+        <Stack.Screen name="admin/index" />
+        <Stack.Screen name="admin/users" />
+        <Stack.Screen name="admin/scans" />
+        <Stack.Screen name="admin/bananas" />
+        <Stack.Screen name="admin/corrections" />
       </Stack>
       <StatusBar style="light" />
     </ThemeProvider>
