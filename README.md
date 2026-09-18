@@ -49,15 +49,14 @@ React Native App
 
 ## Screenshots
 
-Add screenshots of the application here.
+### Home Screen
+![Home Screen](screenshots/home.jpg)
 
-Example:
+### Detection Result
+![Detection Result](screenshots/result.jpg)
 
-![Home Screen](screenshots/home.png)
-
-![Detection Result](screenshots/result.png)
-
-![Scan History](screenshots/history.png)
+### Scan History
+![Scan History](screenshots/history.jpg)
 
 ## How It Works
 
